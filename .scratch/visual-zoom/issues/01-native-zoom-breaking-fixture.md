@@ -6,7 +6,30 @@
 
 **Status:** ready-for-agent
 
-- [ ] Loading the page shows a complex layout: sticky nav, fixed modal (openable), huge scrollable table, canvas element, overflow-hidden body, and a button that swaps the DOM out via replace-style operations.
+- [x] Loading the page shows a complex layout: sticky nav, fixed modal (openable), huge scrollable table, canvas element, overflow-hidden body, and a button that swaps the DOM out via replace-style operations.
 - [ ] Applying native browser zoom to the page visibly breaks at least the sticky/fixed elements (proving the page qualifies as a native-zoom-breaking fixture).
-- [ ] The page is deterministic and servable locally, with no external network dependencies.
-- [ ] Every fixture element is reachable by queryable, stable selectors/ids so browser automation can drive it.
+- [x] The page is deterministic and servable locally, with no external network dependencies.
+- [x] Every fixture element is reachable by queryable, stable selectors/ids so browser automation can drive it.
+
+## Comments
+
+Implemented in `fixtures/native-zoom-breaking.html` + Playwright spec at
+`tests/fixture.spec.js`. The fixture is served locally by the test harness
+(`playwright.config.js` webServer via `python3 -m http.server`).
+
+The native-zoom-breakage mechanism is genuine reflow breakage, not scripted:
+the root scroll area is `overflow: hidden`, the sticky nav lives inside the
+only scroll region (a real sticky context) and carries a pixel-pinned
+`min-width`, and the fixed modal has a fixed `width`. Chromium's page zoom
+reflows the layout viewport (shrinking CSS-px width) without re-measuring
+those boxes, so the nav action button and modal edges get clipped and are
+unreachable (the region clips horizontal overflow). The canvas is rasterised
+once at load, so its grid degrades under zoom. Breakage is demonstrated on
+zoom-in (the direction visual zoom exists for); zoom-out merely widens the
+viewport and is not asserted.
+
+Static verification done: all 16 ids unique, every inline-script element
+reference resolves, no external network references, spec/config syntax OK,
+fixture served over HTTP 200. Playwright browser run is pending — the WSL
+environment lacks Chromium's system libraries and sudo for installs, so the
+two tests under `tests/fixture.spec.js` are written but not yet executed.

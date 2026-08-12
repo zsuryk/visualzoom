@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visual Zoom — native-zoom-breaking fixture</title>
+<style>
+  /* The page is designed around a fixed visual viewport: the root scroll
+     area is disabled and a single inner region scrolls. Native reflow zoom
+     reflows the layout to the zoomed viewport but never re-measures the
+     pixel-pinned fixed/sticky geometry, so the page falls apart instead of
+     zooming in place. */
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1c1c1e;
+    background: #e9e9ec;
+  }
+
+  /* ---- Sticky nav: pixel-pinned minimum width so native zoom's reflow
+     (which shrinks the layout viewport width) clips and orphans it. ---- */
+  #fixture-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 900px;
+    height: 52px;
+    padding: 0 16px;
+    background: #17203a;
+    color: #fff;
+    box-sizing: border-box;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  #fixture-nav .nav-brand {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-right: auto;
+  }
+  #fixture-nav button {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+  #fixture-nav button:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* ---- Scroll region: the only place the page scrolls. The sticky nav
+     lives inside it so it is sticky against a real scroll container; the
+     region clips horizontal overflow so zoomed-in nav content is lost. ---- */
+  #fixture-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    background: #f4f4f6;
+  }
+
+  .fixture-panel {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 24px;
+  }
+
+  /* ---- Fixed modal: fixed width that native zoom's viewport reflow clips. ---- */
+  #fixture-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(10, 12, 20, 0.55);
+  }
+  #fixture-modal-backdrop.open {
+    display: block;
+  }
+  #fixture-modal {
+    position: absolute;
+    z-index: 101;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 640px;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    padding: 20px 24px;
+    box-sizing: border-box;
+  }
+  #fixture-modal h2 {
+    margin: 0 0 12px;
+    font-size: 18px;
+  }
+  #fixture-modal p {
+    margin: 0 0 16px;
+    line-height: 1.5;
+  }
+  #fixture-modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  #fixture-modal .modal-actions button {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 4px;
+    border: 1px solid #c9c9d1;
+    background: #f1f1f4;
+    font: inherit;
+    cursor: pointer;
+  }
+  #fixture-modal .modal-actions button:hover {
+    background: #e4e4e9;
+  }
+
+  /* ---- Huge table ---- */
+  .table-card {
+    background: #ffffff;
+    border: 1px solid #d9d9df;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .table-card h2 {
+    margin: 0;
+    padding: 14px 18px;
+    font-size: 16px;
+    border-bottom: 1px solid #ebebee;
+  }
+  #fixture-table-wrap {
+    width: 100%;
+    height: 480px;
+    overflow: auto;
+  }
+  #fixture-table {
+    border-collapse: collapse;
+    width: 3200px;
+    table-layout: fixed;
+  }
+  #fixture-table th,
+  #fixture-table td {
+    padding: 8px 10px;
+    border: 1px solid #e4e4e9;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #fixture-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f0f0f3;
+    z-index: 2;
+    text-align: left;
+    font-weight: 600;
+  }
+  #fixture-table tbody tr:nth-child(even) {
+    background: #fafafc;
+  }
+
+  /* ---- Canvas ---- */
+  .canvas-card {
+    background: #ffffff;
+    border: 1px solid #d9d9df;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-top: 24px;
+  }
+  .canvas-card h2 {
+    margin: 0 0 10px;
+    font-size: 16px;
+  }
+  #fixture-canvas {
+    display: block;
+    width: 100%;
+    height: 240px;
+    background: #101216;
+  }
+
+  /* ---- DOM-replace region (React-style) ---- */
+  .swap-card {
+    background: #ffffff;
+    border: 1px solid #d9d9df;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-top: 24px;
+  }
+  .swap-card h2 {
+    margin: 0 0 10px;
+    font-size: 16px;
+  }
+  #fixture-status {
+    font: 13px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    color: #3a3a42;
+    margin: 0 0 10px;
+  }
+</style>
+</head>
+<body>
+  <main id="fixture-scroll" data-fixture="scroll-region">
+    <nav id="fixture-nav" data-fixture="sticky-nav">
+      <span class="nav-brand">Fixture&nbsp;Corp</span>
+      <button type="button" id="fixture-nav-action">Nav&nbsp;action</button>
+    </nav>
+
+    <section class="fixture-panel" data-fixture="panel">
+      <h1>Native-zoom-breaking fixture</h1>
+      <p>
+        A complex page deliberately designed to <strong>break under native reflow zoom</strong>:
+        the root scroll area is disabled, the sticky nav has a pixel-pinned minimum width, the
+        fixed modal has a fixed width, and the canvas is rasterised once at load. Control+Plus /
+        Control+Minus reflows the layout without re-measuring, so the fixed and sticky geometry
+        gets clipped and the raster content degrades.
+      </p>
+    </section>
+
+    <section class="fixture-panel">
+      <div class="table-card">
+        <h2>Huge scrollable table</h2>
+        <div id="fixture-table-wrap">
+          <table id="fixture-table">
+            <thead>
+              <tr id="fixture-table-header">
+                <th>SKU</th><th>Item</th><th>Category</th><th>Qty</th><th>Unit</th>
+                <th>Price</th><th>Disc</th><th>Total</th><th>Origin</th><th>Bin</th>
+                <th>Reorder</th><th>Lead&nbsp;time</th><th>Carrier</th><th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Rows injected by script so the fixture stays deterministic. -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="fixture-panel">
+      <div class="canvas-card">
+        <h2>Canvas</h2>
+        <canvas id="fixture-canvas" width="1600" height="240"></canvas>
+      </div>
+    </section>
+
+    <section class="fixture-panel">
+      <div class="swap-card">
+        <h2>DOM-replace region</h2>
+        <p>
+          <button type="button" id="fixture-replace">Replace DOM contents</button>
+        </p>
+        <div id="fixture-swap-region" data-swap-depth="0">
+          <p id="swap-original">Original contents crafted for the swap. Press the button to
+          replace this whole region with new nodes via replace-style DOM operations
+          (no browser navigation).</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="fixture-panel">
+      <div class="swap-card">
+        <h2>Status</h2>
+        <pre id="fixture-status" data-fixture="status">loaded</pre>
+      </div>
+    </section>
+  </main>
+
+  <div id="fixture-modal-backdrop" data-fixture="modal-backdrop">
+    <div id="fixture-modal" role="dialog" aria-modal="true" aria-labelledby="fixture-modal-title">
+      <h2 id="fixture-modal-title">Fixed modal</h2>
+      <p id="fixture-modal-body">A fixed-width modal centered on the viewport at load time.
+      Native zoom shrinks the layout viewport but not this fixed box, so under zoom the
+      modal's edges are clipped and unreachable.</p>
+      <div class="modal-actions">
+        <button type="button" id="fixture-modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  /* Deterministic constructor for the huge table. */
+  (function buildTable() {
+    var tbody = document.querySelector('#fixture-table tbody');
+    var headers = ['SKU', 'Item', 'Category', 'Qty', 'Unit', 'Price', 'Disc',
+      'Total', 'Origin', 'Bin', 'Reorder', 'Lead time', 'Carrier', 'Notes'];
+    var frag = document.createDocumentFragment();
+    for (var r = 1; r <= 400; r++) {
+      var tr = document.createElement('tr');
+      tr.id = 'row-' + r;
+      for (var c = 0; c < headers.length; c++) {
+        var td = document.createElement('td');
+        td.className = 'cell-' + c;
+        td.textContent = 'R' + r + ': ' + headers[c];
+        tr.appendChild(td);
+      }
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+  })();
+
+  /* Raster a ruler grid into the canvas once, at load-time resolution.
+     Native zoom scales these pixels without re-rasterising, so the grid
+     degrades visibly the further the page is zoomed. */
+  (function drawCanvas() {
+    var canvas = document.getElementById('fixture-canvas');
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.fillStyle = '#101216';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#33d17a';
+    ctx.lineWidth = 1;
+    for (var x = 0; x <= w; x += 40) {
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, h);
+      ctx.stroke();
+    }
+    for (var y = 0; y <= h; y += 40) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(w, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#33d17a';
+    ctx.font = '12px monospace';
+    for (var x2 = 0; x2 <= w; x2 += 80) {
+      ctx.fillText('x' + x2, x2 + 4, 14);
+    }
+    ctx.fillStyle = '#e5a50a';
+    ctx.fillRect(20, 20, 12, 12);
+  })();
+
+  /* Modal open/close and the React-style DOM replacement. */
+  (function wireInteractions() {
+    var backdrop = document.getElementById('fixture-modal-backdrop');
+    var region = document.getElementById('fixture-swap-region');
+    var status = document.getElementById('fixture-status');
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+
+    document.getElementById('fixture-nav-action').addEventListener('click', function () {
+      backdrop.classList.add('open');
+      setStatus('modal-open');
+    });
+    document.getElementById('fixture-modal-close').addEventListener('click', function () {
+      backdrop.classList.remove('open');
+      setStatus('modal-closed');
+    });
+
+    document.getElementById('fixture-replace').addEventListener('click', function () {
+      var depth = parseInt(region.dataset.swapDepth, 10) + 1;
+      var wrap = document.createElement('div');
+      wrap.className = 'swap-body';
+      var p = document.createElement('p');
+      p.id = 'swap-text';
+      p.textContent = 'Replaced contents (swap #' + depth + '). The old nodes were '
+        + 'removed via replaceChildren, never via navigation.';
+      var time = document.createElement('p');
+      time.id = 'swap-time';
+      time.textContent = new Date(0).toISOString();
+      wrap.append(p, time);
+      region.replaceChildren(wrap);
+      region.dataset.swapDepth = String(depth);
+      setStatus('swapped:' + depth);
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "visualzoom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser extension that zooms a page by scaling its rendered pixels, not by reflowing.",
+  "scripts": {
+    "test": "playwright test",
+    "test:unit": "playwright test --grep @unit",
+    "test:fixture": "playwright test --grep @fixture"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
