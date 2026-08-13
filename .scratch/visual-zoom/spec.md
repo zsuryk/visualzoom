@@ -41,8 +41,8 @@ Zooming in accepts blurry text by design — layout fidelity is the product. Zoo
 ## Implementation Decisions
 
 - **Live compositor transform over re-render** (ADR-0001): zoom applies `transform: scale()` to the rendered page; reflow is never used by default. Re-render at the settled scale exists only as the per-site crisp-text escape hatch.
-- **Wrapper around page content** (ADR-0002): all of `body`'s children are moved into an injected container div; the transform and scaled layout dimensions live on the container; the browser's native scroll area stays on `<html>`/`<body>`.
-- **Scaled scroll area**: the wrapper's layout box is set to original dimensions × scale so native scrolling reaches the zoomed-in overflow. Requires scroll-anchoring math so the viewport doesn't jump during the gesture.
+- **Wrapper around page content** (ADR-0002): all of `body`'s children are moved into an injected container div; `transform: scale()` lives on the container, which keeps the page's original (unscaled) layout box; the browser's native scroll area stays on `<html>`/`<body>`.
+- **Scaled scroll area**: the wrapper's scaled visual overflow feeds the native scroll area, so native scrolling reaches original dimensions × scale — the zoomed-in overflow. (The layout box is never resized to original × scale: combined with the transform that would double-scale the visuals.) Requires scroll-anchoring math so the viewport doesn't jump during the gesture.
 - **Cursor anchor**: during a gesture, compensate the scaled scroll area's scroll position so the under-cursor pixel never drifts.
 - **Scale model**: range 0.3×–3×; multiplicative steps of ~5% of the current scale per gesture notch (so the change is felt as an even, exponential zoom).
 - **Gesture claim policy**: the extension is aggressive (works on all pages on install) but defaults its modifier to Alt so it never collides with native Ctrl+zoom. Modifier is fully configurable.

@@ -56,7 +56,7 @@ The dead space around the page when it's zoomed out below 1×, since visual zoom
 ## Panning
 
 **Scaled scroll area**:
-A wrapper element whose layout box is set to the page's original dimensions × the scale factor, so the browser's native scrolling (scrollbars, wheel, keys, touch) can reach the parts of a zoomed-in page that visually overflow the viewport. Replaces the page's real scroll area while zoomed.
+A wrapper element holding the page's content at its original (unscaled) layout box, with `transform: scale()` applied on top so the compositor scales the rendered pixels. The wrapper's scaled visual overflow feeds the browser's native scroll area, so native scrolling (scrollbars, wheel, keys, touch) reaches the page's original dimensions × the scale factor — the parts of a zoomed-in page that visually overflow the viewport. Takes over from the page's real scroll area while zoomed. (The layout box itself is never resized to original × scale: combined with the transform that would double-scale the visuals.)
 
 ## Settings
 

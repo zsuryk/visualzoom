@@ -28,46 +28,48 @@ export function letterbox(viewportWidth, viewportHeight, contentWidth, contentHe
   };
 }
 
+const WRAPPER_ID = 'visual-zoom-wrapper';
+const transparent = 'rgba(0, 0, 0, 0)';
+
+let scale = 1;
+let origWidth = 0;
+let origHeight = 0;
+let pageBackground = '';
+let savedStyles = null;
+
+function captureBackground() {
+  const html = getComputedStyle(document.documentElement);
+  const body = getComputedStyle(document.body);
+  const source = html.backgroundColor !== transparent ? document.documentElement : document.body;
+  return getComputedStyle(source).background;
+}
+
+function getWrapper() {
+  return document.getElementById(WRAPPER_ID);
+}
+
+function applyLayout(nextScale, target) {
+  const html = document.documentElement;
+  target.style.transform = `scale(${nextScale})`;
+  html.style.overflow = nextScale >= 1 ? 'auto' : 'hidden';
+  if (savedStyles) {
+    html.style.background = nextScale < 1 ? pageBackground : savedStyles.html.background;
+  }
+}
+
+function applyScale(nextScale) {
+  scale = clampScale(nextScale);
+  const active = getWrapper();
+  if (active) {
+    applyLayout(scale, active);
+  }
+}
+
 export function createVisualZoom() {
-  const WRAPPER_ID = 'visual-zoom-wrapper';
-  const transparent = 'rgba(0, 0, 0, 0)';
-
-  let wrapper = null;
-  let scale = 1;
-  let origWidth = 0;
-  let origHeight = 0;
-  let pageBackground = '';
-  let savedStyles = null;
-
-  function captureBackground() {
-    const html = getComputedStyle(document.documentElement);
-    const body = getComputedStyle(document.body);
-    const source = html.backgroundColor !== transparent ? document.documentElement : document.body;
-    return getComputedStyle(source).background;
-  }
-
-  function getWrapper() {
-    return document.getElementById(WRAPPER_ID);
-  }
-
-  function applyLayout(nextScale, target) {
-    const html = document.documentElement;
-    target.style.transform = `scale(${nextScale})`;
-    html.style.overflow = nextScale >= 1 ? 'auto' : 'hidden';
-    if (savedStyles) {
-      if (nextScale < 1) {
-        html.style.background = pageBackground;
-      } else {
-        html.style.background = savedStyles.html.background;
-      }
-    }
-  }
-
   function apply(initialScale = 1) {
     const existing = getWrapper();
     if (existing) {
-      scale = clampScale(initialScale);
-      applyLayout(scale, existing);
+      applyScale(initialScale === 1 ? scale : initialScale);
       return;
     }
 
@@ -83,37 +85,34 @@ export function createVisualZoom() {
       },
     };
 
-    wrapper = document.createElement('div');
-    wrapper.id = WRAPPER_ID;
+    const el = document.createElement('div');
+    el.id = WRAPPER_ID;
 
     const region = document.createDocumentFragment();
     while (body.firstChild) {
       region.appendChild(body.firstChild);
     }
-    wrapper.appendChild(region);
-    body.appendChild(wrapper);
+    el.appendChild(region);
+    body.appendChild(el);
 
     origWidth = html.scrollWidth;
     origHeight = html.scrollHeight;
     pageBackground = captureBackground();
 
-    wrapper.style.position = 'absolute';
-    wrapper.style.top = '0';
-    wrapper.style.left = '0';
-    wrapper.style.width = `${origWidth}px`;
-    wrapper.style.height = `${origHeight}px`;
-    wrapper.style.overflow = 'hidden';
-    wrapper.style.transformOrigin = '0 0';
+    el.style.position = 'absolute';
+    el.style.top = '0';
+    el.style.left = '0';
+    el.style.width = `${origWidth}px`;
+    el.style.height = `${origHeight}px`;
+    el.style.transformOrigin = '0 0';
     body.style.overflow = 'visible';
 
-    scale = clampScale(initialScale);
-    applyLayout(scale, wrapper);
+    applyScale(initialScale);
   }
 
   function dispose() {
     const active = getWrapper();
     if (!active) {
-      wrapper = null;
       return;
     }
     const body = document.body;
@@ -122,7 +121,6 @@ export function createVisualZoom() {
       body.appendChild(active.firstChild);
     }
     active.remove();
-    wrapper = null;
 
     if (savedStyles) {
       html.style.overflow = savedStyles.html.overflow;
@@ -137,11 +135,7 @@ export function createVisualZoom() {
   }
 
   function setScale(nextScale) {
-    scale = clampScale(nextScale);
-    const active = getWrapper();
-    if (active) {
-      applyLayout(scale, active);
-    }
+    applyScale(nextScale);
   }
 
   function step(direction) {
@@ -156,6 +150,5 @@ export function createVisualZoom() {
     reset: () => setScale(1),
     getScale: () => scale,
     isWrapped: () => Boolean(getWrapper()),
-    getOriginalSize: () => ({ width: origWidth, height: origHeight }),
   };
 }

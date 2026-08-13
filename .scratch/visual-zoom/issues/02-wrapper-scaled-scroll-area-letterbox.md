@@ -45,3 +45,36 @@ CDP scroll gesture (`Input.synthesizeScrollGesture`). The fixture's inner
 scroller sets `overscroll-behavior: contain`, which traps gestures at its
 edge; the test lets it overflow (like an ordinary scrollable pod) so a
 continued gesture chains onto the scaled root scroller.
+
+## Comments (post-review follow-up)
+
+Review fixes landed on top of the first implementation:
+
+- **Documented mechanism corrected.** CONTEXT.md (Scaled scroll area) and
+  ADR-0002 originally said the wrapper's layout box is set to original ×
+  scale. Combined with `transform: scale()` that would double-scale the
+  visuals (orig × scale²). The shipped mechanism — verified green at
+  scrollWidth/Height 2048/1536 at 2× — is: wrapper keeps the original
+  (unscaled) layout box, the transform scales the pixels, and the wrapper's
+  scaled visual overflow feeds the root scroll area, so native scrolling
+  reaches original × scale. Both docs now describe that.
+- **Instance-safe teardown.** State (scale, saved styles, page background,
+  original size) is shared at module scope instead of per instance, so
+  `dispose()` from any instance fully restores the page. Covered by a test.
+- **Idempotent re-apply no longer resets zoom.** `apply()` with the default
+  scale preserves the active scale on an existing wrapper; an explicit scale
+  still reconfigures. Covered by a test.
+- **No wrapper clip.** The wrapper is `overflow: visible` (was `hidden`), so
+  content wider than the page's original box stays reachable through the
+  scroll area instead of being clipped. Covered by a test.
+- **Scroll-input coverage widened.** Real wheel chains onto the zoomed root
+  scroller and Arrow-key scrolling reaches the zoomed overflow (both were
+  previously only tested via the nested region / focus scroll-into-view).
+  Navigation re-apply (reload → re-apply → single wrapper) is now tested too.
+- **Letterbox "stretch" nuance recorded.** The bands are painted by copying
+  the page's computed background onto `<html>` (pixel-identical for flat
+  colours; a gradient/image stretches with the viewport canvas). No geometry
+  is used from the pure-math `letterbox()` — that stays spec-mandated math
+  for the unit tests.
+- `getOriginalSize()` was removed (unused, not spec-mandated); the exported
+  math surface is exactly the spec-mandated set.

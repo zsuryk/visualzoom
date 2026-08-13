@@ -132,6 +132,126 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     expect(gestureTop).toBeGreaterThan(0);
   });
 
+  test('@fixture wheel chains onto the zoomed root scroller', async ({ page }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(() => vz.setScale(2));
+
+    // The nested region traps gestures at its edge by default; with chaining
+    // allowed, a continued wheel at the region's end reaches the root
+    // scroller — the scaled scroll area.
+    await page.evaluate(() => {
+      const region = document.getElementById('fixture-scroll');
+      region.style.overscrollBehavior = 'auto';
+      region.scrollTop = 1e9;
+      document.documentElement.scrollTop = 0;
+    });
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 300);
+    await page.mouse.wheel(0, 300);
+    const rootTop = await page.evaluate(() => document.documentElement.scrollTop);
+    expect(rootTop).toBeGreaterThan(0);
+  });
+
+  test('@fixture keyboard scrolling reaches the zoomed overflow', async ({ page }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(() => vz.setScale(2));
+
+    // Arrow keys on the focused page scroll the root scroll area natively.
+    await page.evaluate(() => {
+      document.documentElement.scrollTop = 0;
+      document.body.tabIndex = 0;
+      document.body.focus();
+    });
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    const rootTop = await page.evaluate(() => document.documentElement.scrollTop);
+    expect(rootTop).toBeGreaterThan(0);
+  });
+
+  test('@fixture content wider than the original box stays reachable (no wrapper clip)', async ({
+    page,
+  }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(() => vz.setScale(2));
+
+    // A non-scrollable element wider than the page's original box, appended
+    // to the wrapped content. The wrapper must not clip it: the scroll area
+    // covers it at original x scale.
+    await page.evaluate(() => {
+      const wrapper = document.getElementById('visual-zoom-wrapper');
+      const wide = document.createElement('div');
+      wide.id = 'fixture-wide';
+      wide.style.width = '2000px';
+      wide.style.height = '20px';
+      wide.style.background = 'rgb(0, 0, 0)';
+      wrapper.appendChild(wide);
+    });
+
+    const reach = await page.evaluate(() => {
+      const html = document.documentElement;
+      return { reachX: html.scrollWidth - html.clientWidth };
+    });
+    expect(reach.reachX).toBe(2000 * 2 - 1024);
+
+    await page.evaluate(() => {
+      document.documentElement.scrollLeft = 1e9;
+    });
+    expect(await page.evaluate(() => document.documentElement.scrollLeft)).toBe(reach.reachX);
+  });
+
+  test('@fixture state is shared across instances: re-apply keeps scale, any instance can dispose', async ({
+    page,
+  }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(async () => {
+      const mod = await import('/src/content/visual-zoom.js');
+      globalThis.vz2 = mod.createVisualZoom();
+      vz2.apply();
+      vz.setScale(2);
+    });
+    expect(await page.evaluate(() => vz.getScale())).toBe(2);
+
+    // Re-applying with the default scale preserves the active zoom.
+    await page.evaluate(() => vz2.apply());
+    expect(await page.evaluate(() => vz.getScale())).toBe(2);
+    expect(
+      await page.evaluate(
+        () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
+      )
+    ).toBe('matrix(2, 0, 0, 2, 0, 0)');
+
+    // Disposing from the non-owning instance restores the page completely.
+    await page.evaluate(() => vz2.dispose());
+    expect(await page.evaluate(() => document.body.children.length)).toBe(3);
+    expect(
+      await page.evaluate(() => !document.getElementById('visual-zoom-wrapper'))
+    ).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('');
+    expect(await page.evaluate(() => document.documentElement.style.background)).toBe('');
+
+    // And applying again works from scratch.
+    await page.evaluate(() => vz.apply());
+    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
+  });
+
+  test('@fixture re-applying after navigation does not double-wrap', async ({ page }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(() => vz.setScale(1.5));
+
+    await page.reload();
+    await page.evaluate(async () => {
+      const mod = await import('/src/content/visual-zoom.js');
+      globalThis.vz = mod.createVisualZoom();
+      globalThis.vz.apply();
+    });
+
+    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
+    expect(
+      await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)
+    ).toBe(true);
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+  });
+
   test('@fixture scale < 1: letterbox bands show the page background, geometry untouched', async ({
     page,
   }) => {
