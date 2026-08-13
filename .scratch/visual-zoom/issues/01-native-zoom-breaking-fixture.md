@@ -30,6 +30,16 @@ viewport and is not asserted.
 
 Static verification done: all 16 ids unique, every inline-script element
 reference resolves, no external network references, spec/config syntax OK,
-fixture served over HTTP 200. Playwright browser run is pending — the WSL
-environment lacks Chromium's system libraries and sudo for installs, so the
-two tests under `tests/fixture.spec.js` are written but not yet executed.
+fixture served over HTTP 200.
+
+Test run status: the fixture spec `tests/fixture.spec.js` now runs green. The
+WSL container lacked Chromium's system libraries and fonts; they were
+installed to a user dir (`~/.local/share/chromium-libs` and
+`~/.local/share/chromium-fonts`) and wired through `playwright.config.js` via
+`LD_LIBRARY_PATH`/`FONTCONFIG_FILE` (only when the dirs exist). Two headless
+quirks are handled in the spec: page zoom is emulated by narrowing the layout
+viewport via CDP `Emulation.setDeviceMetricsOverride` (headless shell ignores
+the Ctrl+= accelerator) — it reflows `window.innerWidth` ~1.8x smaller so the
+pixel-pinned nav/modal break exactly as native zoom would — and the
+full-viewport modal backdrop is closed before driving the DOM-replace region
+so it stops intercepting clicks.

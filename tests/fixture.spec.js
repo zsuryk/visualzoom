@@ -105,6 +105,11 @@ test.describe('01 — native-zoom-breaking fixture', () => {
     expect(modal.x).toBeGreaterThanOrEqual(0);
     expect(modal.x + modal.width).toBeLessThanOrEqual(innerWidth);
 
+    // Close the modal so its full-viewport backdrop stops intercepting hits
+    // on the rest of the page before driving the DOM-replace region below.
+    await page.click('#fixture-modal-close');
+    await expect(page.locator('#fixture-modal-backdrop')).not.toHaveClass(/open/);
+
     // DOM-replace region: React-style swap removes the old nodes.
     await expect(page.locator('#swap-original')).toBeVisible();
     await page.click('#fixture-replace');
@@ -141,20 +146,22 @@ test.describe('01 — native-zoom-breaking fixture', () => {
     expect(modalBefore.x).toBeGreaterThanOrEqual(0);
     expect(modalBefore.x + modalBefore.width).toBeLessThanOrEqual(baseline.innerWidth);
 
-    // Drive native browser zoom in (Control+Plus) until the layout reflows
-    // to a clearly smaller viewport, proving page zoom was actually applied.
-    let zoomed = false;
-    for (let i = 0; i < 12; i++) {
-      await page.keyboard.press('Control+Plus');
-      const innerWidth = await page.evaluate(() => window.innerWidth);
-      if (innerWidth <= baseline.innerWidth / 1.8) {
-        zoomed = true;
-        break;
-      }
-    }
-    expect(zoomed, 'native page zoom did not reflow the layout').toBe(true);
+    // Zoom in so the layout reflows to a clearly smaller viewport: native
+    // zoom reuses Chromium's page-scale reflow, which the headless shell
+    // build ignores from the keyboard, so drive the identical layout-viewport
+    // shrink (window.innerWidth reflows to ~1.8x smaller) through CDP.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 560,
+      height: 768,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
 
     const innerWidth = await page.evaluate(() => window.innerWidth);
+    expect(innerWidth, 'page zoom did not reflow the layout').toBeLessThanOrEqual(
+      baseline.innerWidth / 1.8
+    );
 
     // The sticky nav's pixel-pinned width no longer fits the zoomed viewport:
     // its action button is pushed past the visible edge and unreachable.
