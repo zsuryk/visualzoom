@@ -3,12 +3,14 @@ import {
   MIN_SCALE,
   MAX_SCALE,
   STEP_FACTOR,
+  MAX_TEXTURE_PX,
   clampScale,
   scaleIn,
   scaleOut,
   scaledSize,
   letterbox,
   anchoredScroll,
+  budgetExceeded,
 } from '../src/content/visual-zoom.js';
 
 test.describe('02 — scale model pure math', () => {
@@ -130,5 +132,34 @@ test.describe('03 — scale model: cursor anchor + even steps', () => {
       t = next;
     }
     expect(t).toBe(MIN_SCALE);
+  });
+});
+
+test.describe('05 — layer budget limit computation', () => {
+  test('@unit the budget is a per-dimension compositor texture limit', () => {
+    expect(MAX_TEXTURE_PX).toBe(8192);
+  });
+
+  test('@unit scaled size at or under the budget is fine', () => {
+    expect(budgetExceeded(1024, 768, 3)).toBe(false);
+    expect(budgetExceeded(8192, 800, 1)).toBe(false);
+    expect(budgetExceeded(1000, 8192, 1)).toBe(false);
+  });
+
+  test('@unit exceeding on either dimension trips the budget', () => {
+    expect(budgetExceeded(8192, 800, 1.01)).toBe(true);
+    expect(budgetExceeded(1024, 8193, 1)).toBe(true);
+    expect(budgetExceeded(5000, 5000, 2)).toBe(true);
+  });
+
+  test('@unit zooming out below 1x can bring a huge page back under budget', () => {
+    expect(budgetExceeded(16000, 16000, 1)).toBe(true);
+    expect(budgetExceeded(16000, 16000, 0.5)).toBe(false);
+    expect(budgetExceeded(10000, 10000, 0.8)).toBe(false);
+  });
+
+  test('@unit the boundary is exclusive', () => {
+    expect(budgetExceeded(8192, 768, 1)).toBe(false);
+    expect(budgetExceeded(1024, 8192, 1)).toBe(false);
   });
 });

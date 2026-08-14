@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visual Zoom — huge page fixture</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #1c1c1e;
+    background: #e9e9ec;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    background: #17203a;
+    color: #fff;
+    font-weight: 700;
+  }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  /* A single tall block that pushes the page well past the compositor texture
+     limit (8192px): at scale 1 the scaled page already exceeds it, so the
+     layer-budget warning fires on apply. */
+  #fixture-tall {
+    height: 20000px;
+    background:
+      linear-gradient(180deg, #ffffff 0%, #e9e9ec 100%);
+  }
+  #fixture-note {
+    padding: 24px;
+    max-width: 900px;
+    margin: 0 auto;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <header>Huge&nbsp;page fixture</header>
+  <p id="fixture-note">
+    A deliberately very tall page (over 20000px), so its scaled size exceeds
+    the browser's compositor texture budget and visual zoom is expected to be
+    slow. The extension must warn once, log a telemetry line, and keep zoom
+    fully interactive.
+  </p>
+  <div id="fixture-tall"></div>
+</body>
+</html>

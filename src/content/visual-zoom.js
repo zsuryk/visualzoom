@@ -2,8 +2,17 @@ export const MIN_SCALE = 0.3;
 export const MAX_SCALE = 3.0;
 export const STEP_FACTOR = 1.05;
 
+// The browser's known compositor texture limit: a layer larger than this per
+// dimension is split or falls back to a slow raster path. Pages whose scaled
+// size exceeds it get the one-time layer-budget warning and a telemetry line.
+export const MAX_TEXTURE_PX = 8192;
+
 export function clampScale(scale) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+}
+
+export function budgetExceeded(width, height, scale) {
+  return width * scale > MAX_TEXTURE_PX || height * scale > MAX_TEXTURE_PX;
 }
 
 export function scaleIn(scale) {
@@ -43,6 +52,7 @@ export function anchoredScroll(scrollX, scrollY, cursorX, cursorY, fromScale, to
 
 const WRAPPER_ID = 'visual-zoom-wrapper';
 const NOTICE_ID = 'visual-zoom-notice';
+const BUDGET_NOTICE_ID = 'visual-zoom-budget-notice';
 const transparent = 'rgba(0, 0, 0, 0)';
 
 // Wrapper-survival budget: a page that clears or replaces body contents (SPA
@@ -73,6 +83,12 @@ let pageBackground = '';
 let savedStyles = null;
 let listenersAttached = false;
 
+// Extension wiring hooks. The content-script entry passes implementations
+// that talk to chrome.runtime; in the fixture/unit context they stay null and
+// every call is a no-op (telemetry falls back to a console line instead).
+let scaleChangeListener = null;
+let telemetrySink = null;
+
 // Wrapper-survival state: SPA-style scripts can replace or clear the page's
 // body mid-zoom, destroying the injected wrapper. These track when that
 // happens so the module can re-apply the wrapper — or tear down gracefully
@@ -82,6 +98,7 @@ let tornDown = false;
 let wrapperLossCount = 0;
 let stabilityTimer = null;
 let noticeShown = false;
+let budgetNoticeShown = false;
 
 const hasZoomModifier = (event) => event[ZOOM_MODIFIER];
 
@@ -105,12 +122,21 @@ function applyLayout(nextScale, target) {
   }
 }
 
+// Report the current (scale, wrapped) state to the extension wiring hook so
+// an open popup can mirror what is actually on the page — including the
+// teardown path, where the page unwraps back to 1x.
+function notifyScale() {
+  scaleChangeListener?.(scale, Boolean(getWrapper()));
+}
+
 function applyScale(nextScale) {
   scale = clampScale(nextScale);
   const active = getWrapper();
   if (active) {
     applyLayout(scale, active);
+    checkLayerBudget();
   }
+  notifyScale();
 }
 
 // Scale the page to nextScale while keeping the pixel under the cursor fixed:
@@ -266,13 +292,44 @@ function unwrap() {
     moveChildren(active, document.body);
     active.remove();
   }
+  removeBudgetNotice();
   restoreStylesAndState();
   stopObserving();
   detachListeners();
+  notifyScale();
 }
 
 function getNotice() {
   return document.getElementById(NOTICE_ID);
+}
+
+// One-time, non-blocking toast: fixed bottom-right, dismissible, and never
+// intercepts page interaction. Shared by the teardown and layer-budget
+// notices. Nothing is shown again once the caller's one-shot flag is set.
+function showToast(id, message, background, zIndex) {
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+  const notice = document.createElement('div');
+  notice.id = id;
+  notice.setAttribute('role', 'status');
+  notice.style.cssText =
+    `position:fixed;right:16px;bottom:16px;z-index:${zIndex};max-width:320px;` +
+    `padding:12px 16px;border-radius:8px;background:${background};color:#fff;` +
+    'font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,0.35);';
+  const messageEl = document.createElement('span');
+  messageEl.textContent = message;
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.textContent = 'Dismiss';
+  dismiss.style.cssText =
+    'margin-left:8px;padding:2px 8px;border:1px solid rgba(255,255,255,0.4);' +
+    'border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer;';
+  dismiss.addEventListener('click', () => notice.remove());
+  notice.append(messageEl, dismiss);
+  body.appendChild(notice);
 }
 
 // One-time, non-blocking notice after a graceful teardown. Nothing is shown
@@ -283,30 +340,12 @@ function showNotice() {
     return;
   }
   noticeShown = true;
-  const body = document.body;
-  if (!body) {
-    return;
-  }
-  const notice = document.createElement('div');
-  notice.id = NOTICE_ID;
-  notice.setAttribute('role', 'status');
-  notice.style.cssText =
-    'position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:320px;' +
-    'padding:12px 16px;border-radius:8px;background:#17203a;color:#fff;' +
-    'font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;' +
-    'box-shadow:0 4px 16px rgba(0,0,0,0.35);';
-  const message = document.createElement('span');
-  message.textContent =
-    'Visual Zoom stopped: the page replaced its own content, so zoom was reset to 100%.';
-  const dismiss = document.createElement('button');
-  dismiss.type = 'button';
-  dismiss.textContent = 'Dismiss';
-  dismiss.style.cssText =
-    'margin-left:8px;padding:2px 8px;border:1px solid rgba(255,255,255,0.4);' +
-    'border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer;';
-  dismiss.addEventListener('click', () => notice.remove());
-  notice.append(message, dismiss);
-  body.appendChild(notice);
+  showToast(
+    NOTICE_ID,
+    'Visual Zoom stopped: the page replaced its own content, so zoom was reset to 100%.',
+    '#17203a',
+    2147483647
+  );
 }
 
 function removeNotice() {
@@ -314,6 +353,63 @@ function removeNotice() {
   if (notice) {
     notice.remove();
   }
+}
+
+// ---- Layer budget warning ----
+
+function getBudgetNotice() {
+  return document.getElementById(BUDGET_NOTICE_ID);
+}
+
+function removeBudgetNotice() {
+  const notice = getBudgetNotice();
+  if (notice) {
+    notice.remove();
+  }
+}
+
+// One-time, non-blocking notice when the scaled page exceeds the browser's
+// compositor texture limit: zooming a huge page into a texture-sized layer can
+// be slow. It never blocks zoom interaction and fires at most once per page
+// load (budgetNoticeShown, reset on re-engage via apply()).
+function showBudgetNotice() {
+  if (budgetNoticeShown) {
+    return;
+  }
+  budgetNoticeShown = true;
+  showToast(
+    BUDGET_NOTICE_ID,
+    'Visual Zoom may be slow on this page: it is larger than the browser\'s ' +
+      'compositor texture limit.',
+    '#3a2d12',
+    2147483646
+  );
+}
+
+// Instrumented telemetry for the layer budget so the real envelope is known
+// before release. In the extension the content script forwards this to the
+// background, which logs it; in the fixture the module logs directly.
+function telemetry(event, data) {
+  if (telemetrySink) {
+    telemetrySink(event, data);
+    return;
+  }
+  console.info(`[visual-zoom] telemetry ${event} ${JSON.stringify(data)}`);
+}
+
+function checkLayerBudget() {
+  if (budgetNoticeShown || tornDown || !getWrapper()) {
+    return;
+  }
+  if (!budgetExceeded(origWidth, origHeight, scale)) {
+    return;
+  }
+  showBudgetNotice();
+  telemetry('layer-budget-exceeded', {
+    width: Math.round(origWidth * scale),
+    height: Math.round(origHeight * scale),
+    scale,
+  });
 }
 
 // The page replaced or cleared body contents, taking the wrapper with it.
@@ -396,11 +492,16 @@ function teardown() {
   showNotice();
 }
 
-export function createVisualZoom() {
+export function createVisualZoom({ onScaleChange = null, onTelemetry = null } = {}) {
+  scaleChangeListener = onScaleChange;
+  telemetrySink = onTelemetry;
+
   function apply(initialScale = 1) {
     tornDown = false;
     removeNotice();
     noticeShown = false;
+    removeBudgetNotice();
+    budgetNoticeShown = false;
     startObserving();
     const existing = getWrapper();
     if (existing) {

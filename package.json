@@ -5,11 +5,15 @@
   "type": "module",
   "description": "Browser extension that zooms a page by scaling its rendered pixels, not by reflowing.",
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:firefox": "node scripts/build.mjs firefox",
     "test": "playwright test",
     "test:unit": "playwright test --grep @unit",
-    "test:fixture": "playwright test --grep @fixture"
+    "test:fixture": "playwright test --grep @fixture",
+    "test:extension": "playwright test --grep @extension"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "esbuild": "^0.28.2"
   }
 }
