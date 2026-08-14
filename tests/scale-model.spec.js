@@ -8,6 +8,7 @@ import {
   scaleOut,
   scaledSize,
   letterbox,
+  anchoredScroll,
 } from '../src/content/visual-zoom.js';
 
 test.describe('02 — scale model pure math', () => {
@@ -55,5 +56,79 @@ test.describe('02 — scale model pure math', () => {
     expect(zoomedOut.bottom).toBe(384);
     expect(zoomedOut.right + zoomedOut.contentWidth).toBe(1024);
     expect(zoomedOut.bottom + zoomedOut.contentHeight).toBe(768);
+  });
+});
+
+test.describe('03 — scale model: cursor anchor + even steps', () => {
+  test('@unit anchoredScroll keeps the under-cursor content point fixed on zoom-in', () => {
+    const r = anchoredScroll(0, 0, 512, 384, 1, 2);
+    expect(r.scrollX).toBeCloseTo(512, 10);
+    expect(r.scrollY).toBeCloseTo(384, 10);
+    // (scroll + cursor) / scale is invariant, so the pixel under the cursor
+    // stays put.
+    expect((r.scrollX + 512) / 2).toBeCloseTo((0 + 512) / 1, 10);
+    expect((r.scrollY + 384) / 2).toBeCloseTo((0 + 384) / 1, 10);
+  });
+
+  test('@unit anchoredScroll round-trips zooming back out', () => {
+    const r = anchoredScroll(512, 384, 512, 384, 2, 1);
+    expect(r.scrollX).toBeCloseTo(0, 10);
+    expect(r.scrollY).toBeCloseTo(0, 10);
+    expect((r.scrollX + 512) / 1).toBeCloseTo((512 + 512) / 2, 10);
+    expect((r.scrollY + 384) / 1).toBeCloseTo((384 + 384) / 2, 10);
+  });
+
+  test('@unit anchoredScroll compensates non-zero scroll positions', () => {
+    const r = anchoredScroll(100, 50, 40, 30, 1, 1.05);
+    expect(r.scrollX).toBeCloseTo((100 + 40) * 1.05 - 40, 10);
+    expect(r.scrollY).toBeCloseTo((50 + 30) * 1.05 - 30, 10);
+    expect((r.scrollX + 40) / 1.05).toBeCloseTo(140, 10);
+    expect((r.scrollY + 30) / 1.05).toBeCloseTo(80, 10);
+  });
+
+  test('@unit anchoredScroll with no scale change leaves scroll untouched', () => {
+    expect(anchoredScroll(25, 40, 500, 400, 1.5, 1.5)).toEqual({ scrollX: 25, scrollY: 40 });
+  });
+
+  test('@unit step sizes feel even across the whole range (multiplicative)', () => {
+    for (const s of [MIN_SCALE, 0.4, 0.7, 1, 1.4, 2, 2.9]) {
+      if (s * STEP_FACTOR <= MAX_SCALE) {
+        expect(scaleIn(s) / s).toBeCloseTo(STEP_FACTOR, 10);
+      } else {
+        expect(scaleIn(s)).toBe(MAX_SCALE);
+      }
+      if (s / STEP_FACTOR >= MIN_SCALE) {
+        expect(scaleOut(s) / s).toBeCloseTo(1 / STEP_FACTOR, 10);
+      } else {
+        expect(scaleOut(s)).toBe(MIN_SCALE);
+      }
+    }
+  });
+
+  test('@unit repeated stepping traverses the whole envelope without overshooting', () => {
+    let s = MIN_SCALE;
+    let prev = s;
+    let hitMax = false;
+    while (s < MAX_SCALE) {
+      const next = scaleIn(s);
+      expect(next).toBeGreaterThan(prev);
+      expect(next).toBeLessThanOrEqual(MAX_SCALE);
+      if (next === MAX_SCALE) {
+        hitMax = true;
+      }
+      prev = next;
+      s = next;
+    }
+    expect(hitMax).toBe(true);
+    expect(s).toBe(MAX_SCALE);
+
+    let t = MAX_SCALE;
+    while (t > MIN_SCALE) {
+      const next = scaleOut(t);
+      expect(next).toBeLessThan(t);
+      expect(next).toBeGreaterThanOrEqual(MIN_SCALE);
+      t = next;
+    }
+    expect(t).toBe(MIN_SCALE);
   });
 });
