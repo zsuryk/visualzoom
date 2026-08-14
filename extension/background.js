@@ -18,7 +18,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false });
           return;
         }
-        sendResponse({ ok: true, scale: resp.scale, wrapped: resp.wrapped });
+        sendResponse({
+          ok: true,
+          scale: resp.scale,
+          wrapped: resp.wrapped,
+          active: resp.active,
+          enabled: resp.enabled,
+        });
+      });
+    });
+    return true;
+  }
+
+  // Popup asks for the active tab's site hostname (for its per-site toggles).
+  if (msg.type === 'vz-get-host') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs && tabs[0];
+      if (!tab || tab.id == null) {
+        sendResponse({ ok: false });
+        return;
+      }
+      chrome.tabs.sendMessage(tab.id, { type: 'vz-get-host' }, (resp) => {
+        if (chrome.runtime.lastError || !resp || !resp.hostname) {
+          sendResponse({ ok: false });
+          return;
+        }
+        sendResponse({ ok: true, hostname: resp.hostname });
       });
     });
     return true;
@@ -40,7 +65,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // readout, slider, and active state stay in sync with gesture/hotkey zoom.
   if (msg.type === 'vz-scale-changed' && sender.tab) {
     chrome.runtime.sendMessage(
-      { type: 'vz-scale-changed', scale: msg.scale, wrapped: msg.wrapped },
+      {
+        type: 'vz-scale-changed',
+        scale: msg.scale,
+        wrapped: msg.wrapped,
+        active: msg.active,
+      },
       () => void chrome.runtime.lastError
     );
     return;

@@ -81,3 +81,54 @@ body {
 .reset:hover {
   background: #f1f1f4;
 }
+
+.site-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e3e3e8;
+}
+
+.site-name {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3a3a42;
+  overflow-wrap: anywhere;
+}
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #1c1c1e;
+  cursor: pointer;
+}
+
+.toggle input {
+  margin: 1px 0 0;
+  accent-color: #17203a;
+}
+
+.popup-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e3e3e8;
+  text-align: right;
+}
+
+.popup-footer .link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #17203a;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.popup-footer .link:hover {
+  text-decoration: underline;
+}

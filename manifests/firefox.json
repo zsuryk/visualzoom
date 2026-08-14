@@ -8,12 +8,17 @@
       "id": "visual-zoom@example.local"
     }
   },
+  "permissions": ["storage"],
   "background": {
     "scripts": ["background.js"]
   },
   "action": {
     "default_title": "Visual Zoom",
     "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "content_scripts": [
     {

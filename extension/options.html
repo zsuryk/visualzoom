@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Visual Zoom — Settings</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <h1>Visual Zoom settings</h1>
+    <p id="saved" class="saved" role="status" hidden>Saved</p>
+
+    <section class="card">
+      <h2>Zoom inputs</h2>
+      <div class="row">
+        <label for="modifier">Gesture zoom modifier</label>
+        <select id="modifier"></select>
+        <p class="hint">Held while scrolling to zoom. Native browser zoom keeps its
+        Ctrl combos unless this is set to Ctrl.</p>
+      </div>
+      <div class="row">
+        <span class="label">Zoom hotkeys</span>
+        <div id="hotkeys" class="hotkeys">
+          <div class="hotkey">
+            <span>Zoom in</span>
+            <select id="hotkey-zoom-in-modifier"></select>
+            <input id="hotkey-zoom-in-key" type="text" maxlength="3" aria-label="Zoom in key">
+          </div>
+          <div class="hotkey">
+            <span>Zoom out</span>
+            <select id="hotkey-zoom-out-modifier"></select>
+            <input id="hotkey-zoom-out-key" type="text" maxlength="3" aria-label="Zoom out key">
+          </div>
+          <div class="hotkey">
+            <span>Reset</span>
+            <select id="hotkey-reset-modifier"></select>
+            <input id="hotkey-reset-key" type="text" maxlength="3" aria-label="Reset key">
+          </div>
+        </div>
+        <p class="hint">Each hotkey is its own modifier + key combo. Keys are
+        <code>event.key</code> values (e.g. <code>+</code>, <code>-</code>, <code>0</code>).</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Defaults</h2>
+      <div class="row">
+        <label class="check">
+          <input id="memory-default" type="checkbox">
+          <span>Remember zoom per site</span>
+        </label>
+        <p class="hint">Off by default: the extension never re-applies an old zoom
+        without an explicit opt-in. Per-site toggles live in the popup.</p>
+      </div>
+      <div class="row">
+        <label for="fixed-policy">Fixed-element policy</label>
+        <select id="fixed-policy">
+          <option value="scale-everything">Scale everything</option>
+          <option value="protect-modals">Protect modals</option>
+          <option value="protect-sticky-too">Protect modals and sticky</option>
+        </select>
+        <p class="hint">How <code>position: fixed</code> / <code>sticky</code>
+        elements behave under zoom.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Per-site settings</h2>
+      <div class="row">
+        <input id="add-host" type="text" placeholder="example.com" aria-label="Site hostname">
+        <button id="add-site" type="button">Add site</button>
+      </div>
+      <p class="hint">Per-site overrides. The crisp-text escape hatch reflows a site's
+      page at the settled scale so text renders crisply, trading layout fidelity for
+      sharpness — never on by default.</p>
+      <div id="site-list" class="site-list"></div>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

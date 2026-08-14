@@ -20,6 +20,20 @@
       aria-label="Zoom level slider">
     <button id="reset" type="button" class="reset" title="Reset to 100%">Reset to 100%</button>
   </section>
+  <section id="site-section" class="site-section" hidden>
+    <h2 id="site-name" class="site-name"></h2>
+    <label class="toggle">
+      <input id="site-enabled" type="checkbox">
+      <span>Enable visual zoom for this site</span>
+    </label>
+    <label class="toggle">
+      <input id="site-memory" type="checkbox">
+      <span>Remember zoom for this site</span>
+    </label>
+  </section>
+  <footer class="popup-footer">
+    <button id="open-options" type="button" class="link">Settings</button>
+  </footer>
   <script src="popup.js"></script>
 </body>
 </html>

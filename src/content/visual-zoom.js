@@ -66,8 +66,15 @@ const MAX_REAPPLY_TRIES = 2;
 
 // The key a user holds while scrolling to gesture-zoom. Defaults to Alt, the
 // key native browser zoom doesn't claim, so visual zoom and native reflow
-// zoom coexist. Persisted settings (ticket 06) will make this configurable.
-const ZOOM_MODIFIER = 'altKey';
+// zoom coexist. Persisted settings (ticket 06) feed the live value in through
+// createVisualZoom's modifier option / setInputs().
+export const DEFAULT_MODIFIER = 'altKey';
+
+export const DEFAULT_HOTKEYS = {
+  zoomIn: { modifier: 'altKey', key: '+' },
+  zoomOut: { modifier: 'altKey', key: '-' },
+  reset: { modifier: 'altKey', key: '0' },
+};
 
 // Rough pixel advance of one wheel notch; each notch steps the scale
 // multiplicatively by STEP_FACTOR. Line-mode and page-mode deltas are
@@ -77,6 +84,9 @@ const LINE_PX = 16;
 const PAGE_PX = 100;
 
 let scale = 1;
+let crispText = false;
+let zoomModifier = DEFAULT_MODIFIER;
+let inputHotkeys = DEFAULT_HOTKEYS;
 let origWidth = 0;
 let origHeight = 0;
 let pageBackground = '';
@@ -100,7 +110,29 @@ let stabilityTimer = null;
 let noticeShown = false;
 let budgetNoticeShown = false;
 
-const hasZoomModifier = (event) => event[ZOOM_MODIFIER];
+// Whether the configured gesture modifier is held, without colliding with
+// native browser shortcuts. Alt/Shift combos also require Ctrl and Meta to be
+// free so Ctrl+wheel (native reflow zoom) and Meta+wheel stay untouched; a
+// Ctrl/Meta-configured modifier claims its own key.
+const PRIMARY_MODIFIERS = ['ctrlKey', 'metaKey'];
+
+function hasZoomModifier(event) {
+  if (!event[zoomModifier]) {
+    return false;
+  }
+  return (
+    PRIMARY_MODIFIERS.includes(zoomModifier) || (!event.ctrlKey && !event.metaKey)
+  );
+}
+
+function matchesCombo(event, combo) {
+  if (event.key !== combo.key || !event[combo.modifier]) {
+    return false;
+  }
+  return (
+    PRIMARY_MODIFIERS.includes(combo.modifier) || (!event.ctrlKey && !event.metaKey)
+  );
+}
 
 function captureBackground() {
   const html = getComputedStyle(document.documentElement);
@@ -122,11 +154,19 @@ function applyLayout(nextScale, target) {
   }
 }
 
-// Report the current (scale, wrapped) state to the extension wiring hook so
-// an open popup can mirror what is actually on the page — including the
-// teardown path, where the page unwraps back to 1x.
+// The crisp-text escape hatch renders the settled scale by reflowing the page
+// (CSS zoom on the root), so text re-rasterizes crisply — trading layout
+// fidelity for sharpness. It is an explicit per-site opt-in, never a default.
+function applyCrispLayout(nextScale) {
+  document.documentElement.style.zoom = nextScale === 1 ? '' : String(nextScale);
+}
+
+// Report the current (scale, wrapped, engaged) state to the extension wiring
+// hook so an open popup can mirror what is actually on the page — including
+// the teardown path, where the page unwraps back to 1x, and the crisp-text
+// path, where the tool is engaged without a wrapper.
 function notifyScale() {
-  scaleChangeListener?.(scale, Boolean(getWrapper()));
+  scaleChangeListener?.(scale, Boolean(getWrapper()), isEngaged());
 }
 
 function applyScale(nextScale) {
@@ -135,6 +175,8 @@ function applyScale(nextScale) {
   if (active) {
     applyLayout(scale, active);
     checkLayerBudget();
+  } else if (crispText) {
+    applyCrispLayout(scale);
   }
   notifyScale();
 }
@@ -172,7 +214,7 @@ function notchFromWheel(event) {
 }
 
 function onWheel(event) {
-  if (!hasZoomModifier(event) || event.ctrlKey || event.metaKey || !getWrapper()) {
+  if (!hasZoomModifier(event) || !isEngaged()) {
     return;
   }
   const nextScale = clampScale(scale * Math.pow(STEP_FACTOR, notchFromWheel(event)));
@@ -180,19 +222,25 @@ function onWheel(event) {
     return;
   }
   event.preventDefault();
-  applyScaleAnchored(nextScale, event.clientX, event.clientY);
+  // In reflow mode there is no scaled scroll area to compensate: the browser
+  // reflows layout around the origin, so the cursor anchor is not claimed.
+  if (crispText) {
+    applyScale(nextScale);
+  } else {
+    applyScaleAnchored(nextScale, event.clientX, event.clientY);
+  }
 }
 
 function onKeyDown(event) {
-  if (!hasZoomModifier(event) || event.ctrlKey || event.metaKey || !getWrapper()) {
+  if (!isEngaged()) {
     return;
   }
   let nextScale;
-  if (event.key === '+') {
+  if (matchesCombo(event, inputHotkeys.zoomIn)) {
     nextScale = scaleIn(scale);
-  } else if (event.key === '-') {
+  } else if (matchesCombo(event, inputHotkeys.zoomOut)) {
     nextScale = scaleOut(scale);
-  } else if (event.key === '0') {
+  } else if (matchesCombo(event, inputHotkeys.reset)) {
     nextScale = 1;
   } else {
     return;
@@ -230,6 +278,8 @@ function restoreStylesAndState() {
     body.style.overflow = savedStyles.body.overflow;
   }
   savedStyles = null;
+  document.documentElement.style.zoom = '';
+  crispText = false;
   scale = 1;
   origWidth = 0;
   origHeight = 0;
@@ -297,6 +347,53 @@ function unwrap() {
   stopObserving();
   detachListeners();
   notifyScale();
+}
+
+// The tool is engaged when either the wrapper is up (live transform) or the
+// crisp-text reflow is active — so gesture/hotkey zoom keep working in both.
+function isEngaged() {
+  return Boolean(getWrapper()) || crispText;
+}
+
+// Enter/leave the crisp-text escape hatch. Entering reflows the page at the
+// settled scale (wrapper torn down, CSS zoom on the root) so text re-rasterizes
+// crisply; leaving clears the reflow and re-wraps the page at the same scale,
+// returning to live-transform zoom.
+function setCrispText(enabled) {
+  if (enabled === crispText) {
+    return;
+  }
+  crispText = enabled;
+  if (enabled) {
+    removeWrapperKeepZoom();
+    stopObserving();
+    applyCrispLayout(scale);
+  } else {
+    document.documentElement.style.zoom = '';
+    startObserving();
+    wrapBody(scale);
+  }
+  notifyScale();
+}
+
+// Tear the wrapper down but keep the settled scale and the captured original
+// styles, so the crisp reflow can take over and a later re-wrap reuses the
+// page's true originals.
+function removeWrapperKeepZoom() {
+  const active = getWrapper();
+  if (!active) {
+    return;
+  }
+  moveChildren(active, document.body);
+  active.remove();
+  removeBudgetNotice();
+  if (savedStyles) {
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = savedStyles.html.overflow;
+    html.style.background = savedStyles.html.background;
+    body.style.overflow = savedStyles.body.overflow;
+  }
 }
 
 function getNotice() {
@@ -492,9 +589,16 @@ function teardown() {
   showNotice();
 }
 
-export function createVisualZoom({ onScaleChange = null, onTelemetry = null } = {}) {
+export function createVisualZoom({
+  onScaleChange = null,
+  onTelemetry = null,
+  modifier = DEFAULT_MODIFIER,
+  hotkeys = DEFAULT_HOTKEYS,
+} = {}) {
   scaleChangeListener = onScaleChange;
   telemetrySink = onTelemetry;
+  zoomModifier = modifier;
+  inputHotkeys = hotkeys;
 
   function apply(initialScale = 1) {
     tornDown = false;
@@ -502,6 +606,10 @@ export function createVisualZoom({ onScaleChange = null, onTelemetry = null } = 
     noticeShown = false;
     removeBudgetNotice();
     budgetNoticeShown = false;
+    if (crispText) {
+      applyScale(initialScale);
+      return;
+    }
     startObserving();
     const existing = getWrapper();
     if (existing) {
@@ -523,6 +631,17 @@ export function createVisualZoom({ onScaleChange = null, onTelemetry = null } = 
     setScale(direction > 0 ? scaleIn(scale) : scaleOut(scale));
   }
 
+  // Settings changes land here live: a new gesture modifier or hotkey combo
+  // applies to already-open tabs without a reload of the extension.
+  function setInputs({ modifier: nextModifier, hotkeys: nextHotkeys } = {}) {
+    if (nextModifier) {
+      zoomModifier = nextModifier;
+    }
+    if (nextHotkeys) {
+      inputHotkeys = nextHotkeys;
+    }
+  }
+
   return {
     apply,
     dispose,
@@ -531,5 +650,8 @@ export function createVisualZoom({ onScaleChange = null, onTelemetry = null } = 
     reset: () => setScale(1),
     getScale: () => scale,
     isWrapped: () => Boolean(getWrapper()),
+    isEngaged,
+    setInputs,
+    setCrispText,
   };
 }
