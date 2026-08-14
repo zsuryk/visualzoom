@@ -12,6 +12,8 @@ const STABLE_IDS = [
   'fixture-canvas',
   'fixture-replace',
   'fixture-swap-region',
+  'fixture-body-replace',
+  'fixture-body-fight',
   'fixture-modal-backdrop',
   'fixture-modal',
   'fixture-modal-close',

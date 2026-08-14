@@ -42,7 +42,17 @@ export function anchoredScroll(scrollX, scrollY, cursorX, cursorY, fromScale, to
 }
 
 const WRAPPER_ID = 'visual-zoom-wrapper';
+const NOTICE_ID = 'visual-zoom-notice';
 const transparent = 'rgba(0, 0, 0, 0)';
+
+// Wrapper-survival budget: a page that clears or replaces body contents (SPA
+// frameworks) destroys the injected wrapper; the module re-applies it. The
+// budget counts consecutive wrapper losses since the last time a re-applied
+// wrapper actually persisted (see armStabilityTimer). Once the count exceeds
+// MAX_REAPPLY_TRIES, re-establishment is treated as impossible: the module
+// tears down to 1x gracefully and tells the user — never an observer loop.
+export const STABILITY_MS = 1000;
+const MAX_REAPPLY_TRIES = 2;
 
 // The key a user holds while scrolling to gesture-zoom. Defaults to Alt, the
 // key native browser zoom doesn't claim, so visual zoom and native reflow
@@ -62,6 +72,16 @@ let origHeight = 0;
 let pageBackground = '';
 let savedStyles = null;
 let listenersAttached = false;
+
+// Wrapper-survival state: SPA-style scripts can replace or clear the page's
+// body mid-zoom, destroying the injected wrapper. These track when that
+// happens so the module can re-apply the wrapper — or tear down gracefully
+// when the page is actively fighting it.
+let observer = null;
+let tornDown = false;
+let wrapperLossCount = 0;
+let stabilityTimer = null;
+let noticeShown = false;
 
 const hasZoomModifier = (event) => event[ZOOM_MODIFIER];
 
@@ -173,16 +193,38 @@ function detachListeners() {
   listenersAttached = false;
 }
 
-export function createVisualZoom() {
-  function apply(initialScale = 1) {
-    const existing = getWrapper();
-    if (existing) {
-      applyScale(initialScale === 1 ? scale : initialScale);
-      return;
-    }
+// ---- Wrapper survival: re-apply on cheap body clears, tear down gracefully ----
 
-    const body = document.body;
+function restoreStylesAndState() {
+  if (savedStyles) {
     const html = document.documentElement;
+    const body = document.body;
+    html.style.overflow = savedStyles.html.overflow;
+    html.style.background = savedStyles.html.background;
+    body.style.overflow = savedStyles.body.overflow;
+  }
+  savedStyles = null;
+  scale = 1;
+  origWidth = 0;
+  origHeight = 0;
+  pageBackground = '';
+  wrapperLossCount = 0;
+  clearStabilityTimer();
+}
+
+function moveChildren(from, to) {
+  while (from.firstChild) {
+    to.appendChild(from.firstChild);
+  }
+}
+
+// Move the page's children into a fresh wrapper at targetScale. The original
+// inline styles are captured once and kept across re-applies, so a later
+// teardown restores the page's true original styles, not the ones we set.
+function wrapBody(targetScale) {
+  const body = document.body;
+  const html = document.documentElement;
+  if (!savedStyles) {
     savedStyles = {
       html: {
         overflow: html.style.overflow,
@@ -192,56 +234,184 @@ export function createVisualZoom() {
         overflow: body.style.overflow,
       },
     };
+  }
 
-    const el = document.createElement('div');
-    el.id = WRAPPER_ID;
+  const el = document.createElement('div');
+  el.id = WRAPPER_ID;
 
-    const region = document.createDocumentFragment();
-    while (body.firstChild) {
-      region.appendChild(body.firstChild);
+  moveChildren(body, el);
+  body.appendChild(el);
+
+  origWidth = html.scrollWidth;
+  origHeight = html.scrollHeight;
+  pageBackground = captureBackground();
+
+  el.style.position = 'absolute';
+  el.style.top = '0';
+  el.style.left = '0';
+  el.style.width = `${origWidth}px`;
+  el.style.height = `${origHeight}px`;
+  el.style.transformOrigin = '0 0';
+  body.style.overflow = 'visible';
+
+  attachListeners();
+  applyScale(targetScale);
+}
+
+// Move the page's children back to body, undo the styles, and stop watching
+// the DOM. Idempotent whether or not a wrapper is currently present.
+function unwrap() {
+  const active = getWrapper();
+  if (active) {
+    moveChildren(active, document.body);
+    active.remove();
+  }
+  restoreStylesAndState();
+  stopObserving();
+  detachListeners();
+}
+
+function getNotice() {
+  return document.getElementById(NOTICE_ID);
+}
+
+// One-time, non-blocking notice after a graceful teardown. Nothing is shown
+// again once noticeShown is set, and nothing after this function mutates the
+// DOM.
+function showNotice() {
+  if (noticeShown) {
+    return;
+  }
+  noticeShown = true;
+  const body = document.body;
+  if (!body) {
+    return;
+  }
+  const notice = document.createElement('div');
+  notice.id = NOTICE_ID;
+  notice.setAttribute('role', 'status');
+  notice.style.cssText =
+    'position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:320px;' +
+    'padding:12px 16px;border-radius:8px;background:#17203a;color:#fff;' +
+    'font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;' +
+    'box-shadow:0 4px 16px rgba(0,0,0,0.35);';
+  const message = document.createElement('span');
+  message.textContent =
+    'Visual Zoom stopped: the page replaced its own content, so zoom was reset to 100%.';
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.textContent = 'Dismiss';
+  dismiss.style.cssText =
+    'margin-left:8px;padding:2px 8px;border:1px solid rgba(255,255,255,0.4);' +
+    'border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer;';
+  dismiss.addEventListener('click', () => notice.remove());
+  notice.append(message, dismiss);
+  body.appendChild(notice);
+}
+
+function removeNotice() {
+  const notice = getNotice();
+  if (notice) {
+    notice.remove();
+  }
+}
+
+// The page replaced or cleared body contents, taking the wrapper with it.
+// Re-apply at the current scale so zoom survives the page's own DOM changes,
+// but never fight the page: if the wrapper cannot be re-established cleanly
+// — the page keeps destroying it, or there is nothing left to wrap — tear
+// down to 1x and tell the user rather than entering an observer loop.
+function reapplyAfterLoss() {
+  const body = document.body;
+  if (!body || body.children.length === 0) {
+    teardown();
+    return;
+  }
+  wrapperLossCount += 1;
+  if (wrapperLossCount > MAX_REAPPLY_TRIES) {
+    teardown();
+    return;
+  }
+  wrapBody(scale);
+  armStabilityTimer();
+  // A re-wrapped page is a fresh page: it starts at the top, never mid-scroll
+  // in the content that was just replaced.
+  const html = document.documentElement;
+  html.scrollLeft = 0;
+  html.scrollTop = 0;
+}
+
+// A re-applied wrapper that survives the whole stability window means the
+// page accepted it: reset the loss budget. A page that keeps destroying the
+// wrapper before that — at any cadence, however slow — keeps the budget
+// climbing, so a relentless fighter tears down exactly like a burst one.
+function armStabilityTimer() {
+  clearStabilityTimer();
+  stabilityTimer = setTimeout(() => {
+    stabilityTimer = null;
+    if (!tornDown && getWrapper()) {
+      wrapperLossCount = 0;
     }
-    el.appendChild(region);
-    body.appendChild(el);
+  }, STABILITY_MS);
+}
 
-    origWidth = html.scrollWidth;
-    origHeight = html.scrollHeight;
-    pageBackground = captureBackground();
+function clearStabilityTimer() {
+  if (stabilityTimer !== null) {
+    clearTimeout(stabilityTimer);
+    stabilityTimer = null;
+  }
+}
 
-    el.style.position = 'absolute';
-    el.style.top = '0';
-    el.style.left = '0';
-    el.style.width = `${origWidth}px`;
-    el.style.height = `${origHeight}px`;
-    el.style.transformOrigin = '0 0';
-    body.style.overflow = 'visible';
+function onBodyMutation() {
+  if (tornDown || !document.body || getWrapper()) {
+    return;
+  }
+  reapplyAfterLoss();
+}
 
-    attachListeners();
-    applyScale(initialScale);
+// Cheapest detector of wrapper destruction: watch only body's direct children
+// (a single childList mutation covers any replace-style clear), never the
+// subtree, so ordinary content changes inside the wrapper stay unbudgeted.
+function startObserving() {
+  if (observer || !document.body) {
+    return;
+  }
+  observer = new MutationObserver(onBodyMutation);
+  observer.observe(document.body, { childList: true });
+}
+
+function stopObserving() {
+  if (!observer) {
+    return;
+  }
+  observer.disconnect();
+  observer = null;
+}
+
+// Final graceful stop: explicit re-applies can re-engage via apply(), but
+// nothing observes or mutates the DOM again after the one-time notice.
+function teardown() {
+  tornDown = true;
+  unwrap();
+  showNotice();
+}
+
+export function createVisualZoom() {
+  function apply(initialScale = 1) {
+    tornDown = false;
+    removeNotice();
+    noticeShown = false;
+    startObserving();
+    const existing = getWrapper();
+    if (existing) {
+      applyScale(initialScale === 1 ? scale : initialScale);
+      return;
+    }
+    wrapBody(initialScale);
   }
 
   function dispose() {
-    const active = getWrapper();
-    if (!active) {
-      return;
-    }
-    const body = document.body;
-    const html = document.documentElement;
-    while (active.firstChild) {
-      body.appendChild(active.firstChild);
-    }
-    active.remove();
-
-    if (savedStyles) {
-      html.style.overflow = savedStyles.html.overflow;
-      html.style.background = savedStyles.html.background;
-      body.style.overflow = savedStyles.body.overflow;
-    }
-    savedStyles = null;
-    scale = 1;
-    origWidth = 0;
-    origHeight = 0;
-    pageBackground = '';
-    detachListeners();
+    unwrap();
   }
 
   function setScale(nextScale) {

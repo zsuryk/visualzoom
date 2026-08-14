@@ -265,6 +265,10 @@
           replace this whole region with new nodes via replace-style DOM operations
           (no browser navigation).</p>
         </div>
+        <p>
+          <button type="button" id="fixture-body-replace">Replace whole page</button>
+          <button type="button" id="fixture-body-fight">Fight the wrapper</button>
+        </p>
       </div>
     </section>
 
@@ -375,6 +379,42 @@
       region.replaceChildren(wrap);
       region.dataset.swapDepth = String(depth);
       setStatus('swapped:' + depth);
+    });
+
+    /* Wrapper-survival scenarios for the 04 spec. The first replaces the whole
+       page's body the way an SPA router or a replaceChildren-driven framework
+       does: a legitimate re-render the module must survive. The second is an
+       adversarial page that actively unwraps the extension's wrapper wherever
+       it appears — the scenario that must end in graceful teardown. */
+    document.getElementById('fixture-body-replace').addEventListener('click', function () {
+      var root = document.createElement('div');
+      root.id = 'fresh-page';
+      var heading = document.createElement('h1');
+      heading.textContent = 'Body replaced';
+      var note = document.createElement('p');
+      note.id = 'fresh-note';
+      note.textContent = 'Replaced via document.body.replaceChildren: the wrapper must be re-applied.';
+      root.append(heading, note);
+      document.body.replaceChildren(root);
+    });
+
+    document.getElementById('fixture-body-fight').addEventListener('click', function () {
+      if (window.__vzFighting) {
+        return;
+      }
+      window.__vzFighting = true;
+      function unwrapWrapper() {
+        var wrapper = document.getElementById('visual-zoom-wrapper');
+        if (!wrapper) {
+          return;
+        }
+        while (wrapper.firstChild) {
+          document.body.appendChild(wrapper.firstChild);
+        }
+        wrapper.remove();
+      }
+      new MutationObserver(unwrapWrapper).observe(document.body, { childList: true });
+      unwrapWrapper();
     });
   })();
 </script>
