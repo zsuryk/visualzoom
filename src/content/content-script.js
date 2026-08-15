@@ -60,8 +60,12 @@ function persistMemoryScale(scale) {
 // Bring the page to the state the current settings demand. Idempotent: a
 // disabled site is left untouched (no wrapper, scale 1); an enabled site is
 // applied with its remembered scale and crisp-text preference; input combos
-// are always synced to the latest settings.
+// and the fixed-element policy are always synced to the latest settings.
 function sync() {
+  // The fixed-element policy applies live: switching modes (globally or per
+  // site) lifts or restores protected elements on already-open pages without
+  // reloading anything.
+  controller.setPolicy(site.fixedElementPolicy);
   if (site.enabled) {
     if (!controller.isEngaged()) {
       const initial = site.memory && site.scale !== 1 ? site.scale : 1;

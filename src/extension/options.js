@@ -24,6 +24,12 @@ const MODIFIER_LABELS = {
   metaKey: 'Meta (\u2318)',
 };
 
+const POLICY_LABELS = {
+  'scale-everything': 'Scale everything',
+  'protect-modals': 'Protect modals',
+  'protect-sticky-too': 'Protect modals and sticky',
+};
+
 const modifierSelect = document.getElementById('modifier');
 const memoryDefault = document.getElementById('memory-default');
 const fixedPolicy = document.getElementById('fixed-policy');
@@ -91,6 +97,26 @@ function siteRowControls(classSuffix, label, checked) {
   return toggle;
 }
 
+// Per-site fixed-element policy override. The empty "Default" option removes
+// the override so the site falls back to the global policy.
+function sitePolicySelect(value) {
+  const select = document.createElement('select');
+  select.className = 'site-policy';
+  select.setAttribute('aria-label', 'Fixed-element policy for this site');
+  const inherit = document.createElement('option');
+  inherit.value = '';
+  inherit.textContent = 'Default';
+  select.appendChild(inherit);
+  for (const policy of POLICIES) {
+    const option = document.createElement('option');
+    option.value = policy;
+    option.textContent = POLICY_LABELS[policy];
+    select.appendChild(option);
+  }
+  select.value = value;
+  return select;
+}
+
 function renderSites() {
   siteList.textContent = '';
   for (const hostname of Object.keys(settings.sites).sort()) {
@@ -113,6 +139,25 @@ function renderSites() {
       updateSite(hostname, { crispText: event.target.checked }).then(() => showSaved());
     });
 
+    // The select shows the site's own override, or "Default" when it inherits
+    // the global policy — so inheritance vs an explicit override is visible.
+    const override = settings.sites[hostname] && settings.sites[hostname].fixedElementPolicy;
+    const policy = sitePolicySelect(override || '');
+    policy.addEventListener('change', () => {
+      if (policy.value === '') {
+        saveSettings((next) => {
+          const sites = { ...next.sites };
+          if (sites[hostname]) {
+            const { fixedElementPolicy, ...rest } = sites[hostname];
+            sites[hostname] = rest;
+          }
+          return { ...next, sites };
+        }).then(() => showSaved());
+      } else {
+        updateSite(hostname, { fixedElementPolicy: policy.value }).then(() => showSaved());
+      }
+    });
+
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'site-remove';
@@ -121,7 +166,7 @@ function renderSites() {
       removeSite(hostname).then(() => showSaved());
     });
 
-    row.append(name, memory, crisp, remove);
+    row.append(name, memory, crisp, policy, remove);
     siteList.appendChild(row);
   }
 }

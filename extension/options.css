@@ -173,6 +173,11 @@ input[type="text"] {
   accent-color: #17203a;
 }
 
+.site-policy {
+  height: 28px;
+  font-size: 12.5px;
+}
+
 .site-remove {
   border: 1px solid #c9c9d1;
   border-radius: 6px;

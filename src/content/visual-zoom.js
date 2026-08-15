@@ -50,10 +50,14 @@ export function anchoredScroll(scrollX, scrollY, cursorX, cursorY, fromScale, to
   };
 }
 
+import { POLICIES } from '../settings/store.js';
+
 const WRAPPER_ID = 'visual-zoom-wrapper';
 const NOTICE_ID = 'visual-zoom-notice';
 const BUDGET_NOTICE_ID = 'visual-zoom-budget-notice';
 const transparent = 'rgba(0, 0, 0, 0)';
+
+const FIXED_LAYER_ID = 'visual-zoom-fixed-layer';
 
 // Wrapper-survival budget: a page that clears or replaces body contents (SPA
 // frameworks) destroys the injected wrapper; the module re-applies it. The
@@ -92,6 +96,13 @@ let origHeight = 0;
 let pageBackground = '';
 let savedStyles = null;
 let listenersAttached = false;
+
+// Fixed-element policy state: the active mode and the elements currently
+// lifted out of the scaled wrapper into the unscaled fixed layer (ticket 07).
+let fixedPolicy = 'scale-everything';
+let fixedLayer = null;
+const protectedElements = new Map();
+let fixedObserver = null;
 
 // Extension wiring hooks. The content-script entry passes implementations
 // that talk to chrome.runtime; in the fixture/unit context they stay null and
@@ -332,12 +343,17 @@ function wrapBody(targetScale) {
 
   attachListeners();
   applyScale(targetScale);
+  syncPolicy();
 }
 
 // Move the page's children back to body, undo the styles, and stop watching
 // the DOM. Idempotent whether or not a wrapper is currently present.
 function unwrap() {
   const active = getWrapper();
+  // Restore lifted elements to their original spots inside the wrapper BEFORE
+  // the children are moved back to body, so the page regains its exact DOM.
+  clearProtected();
+  stopFixedObserver();
   if (active) {
     moveChildren(active, document.body);
     active.remove();
@@ -381,6 +397,8 @@ function setCrispText(enabled) {
 // page's true originals.
 function removeWrapperKeepZoom() {
   const active = getWrapper();
+  clearProtected();
+  stopFixedObserver();
   if (!active) {
     return;
   }
@@ -509,6 +527,213 @@ function checkLayerBudget() {
   });
 }
 
+// ---- Fixed-element policy ----
+//
+// Protected fixed/sticky elements are "lifted" out of the scaled wrapper into
+// a fixed layer that lives at body level, outside any transform. A lifted
+// element keeps its own CSS, so a `position: fixed` modal re-anchors to the
+// viewport at 1x while the rest of the page scales, and a sticky header lifted
+// as `position: fixed` stays viewport-anchored too. Elements that become
+// fixed after the page is already zoomed (SPA-rendered modals, dynamically
+// added sticky elements) are caught by a live subtree observer and lifted the
+// moment they appear.
+
+// The layer is a sibling of the wrapper, so it is never scaled: its fixed
+// children anchor to the viewport at 1x. It covers the viewport but passes
+// interaction through everywhere a lifted element isn't painted; each lifted
+// element keeps its own pointer-events.
+function ensureFixedLayer() {
+  if (fixedLayer) {
+    return fixedLayer;
+  }
+  fixedLayer = document.createElement('div');
+  fixedLayer.id = FIXED_LAYER_ID;
+  fixedLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;';
+  document.body.appendChild(fixedLayer);
+  return fixedLayer;
+}
+
+function removeFixedLayer() {
+  if (fixedLayer) {
+    fixedLayer.remove();
+    fixedLayer = null;
+  }
+}
+
+// Whether the current policy protects this element. Sticky table headers
+// (sticky cells inside a <table>) are left to their own scroll container —
+// lifting them out of the table would collapse its layout — so only page-level
+// sticky chrome (headers/navs) is protected.
+function shouldProtect(el) {
+  if (fixedPolicy === 'scale-everything') {
+    return false;
+  }
+  const position = getComputedStyle(el).position;
+  if (position === 'fixed') {
+    return true;
+  }
+  return (
+    position === 'sticky' && fixedPolicy === 'protect-sticky-too' && !el.closest('table')
+  );
+}
+
+// Skip elements that are already inside a lifted element: lifting the outermost
+// fixed element (e.g. a modal backdrop) brings its descendants along, and
+// re-lifting them would break their offset positioning.
+function isDescendantOfProtected(el) {
+  for (const protectedEl of protectedElements.keys()) {
+    if (protectedEl !== el && protectedEl.contains(el)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function liftElement(el) {
+  if (protectedElements.has(el) || isDescendantOfProtected(el)) {
+    return;
+  }
+  if (!shouldProtect(el)) {
+    return;
+  }
+  const inlinePosition = el.style.position;
+  // The fixed layer passes interaction through with pointer-events:none,
+  // which its descendants inherit — so each lifted element re-asserts
+  // pointer-events:auto to stay interactive (protected elements must remain
+  // usable, per the ticket). Both overrides are restored on unlift.
+  const inlinePointerEvents = el.style.pointerEvents;
+  // A sticky element only sticks against a scroll container; lifted to the
+  // viewport layer it must be fixed to stay viewport-anchored at 1x. A sticky
+  // that hasn't stuck yet still anchors at its flow position (fixed elements
+  // have no scroll-time stuck state), which matches the fixture navs this
+  // policy is designed for; below-the-fold chunky stickies are outside scope.
+  if (getComputedStyle(el).position === 'sticky') {
+    el.style.position = 'fixed';
+  }
+  el.style.pointerEvents = 'auto';
+  protectedElements.set(el, {
+    parent: el.parentNode,
+    next: el.nextSibling,
+    inlinePosition,
+    inlinePointerEvents,
+  });
+  ensureFixedLayer().appendChild(el);
+}
+
+// Restore a lifted element to its original spot in the wrapped page. If the
+// page destroyed its original parent (body-level content replacement), drop
+// the orphan rather than re-attach stale nodes.
+function unliftElement(el) {
+  const record = protectedElements.get(el);
+  if (!record) {
+    return;
+  }
+  protectedElements.delete(el);
+  el.style.position = record.inlinePosition;
+  el.style.pointerEvents = record.inlinePointerEvents;
+  if (record.parent && record.parent.isConnected) {
+    if (record.next && record.next.isConnected) {
+      record.parent.insertBefore(el, record.next);
+    } else {
+      record.parent.appendChild(el);
+    }
+  } else if (el.isConnected) {
+    el.remove();
+  }
+}
+
+function clearProtected() {
+  for (const el of Array.from(protectedElements.keys())) {
+    unliftElement(el);
+  }
+  removeFixedLayer();
+}
+
+function walkElements(root, fn) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    fn(node);
+  }
+}
+
+function scanAndLift(root) {
+  if (fixedPolicy === 'scale-everything') {
+    return;
+  }
+  const candidates = [];
+  if (shouldProtect(root)) {
+    candidates.push(root);
+  }
+  walkElements(root, (el) => {
+    if (shouldProtect(el)) {
+      candidates.push(el);
+    }
+  });
+  for (const el of candidates) {
+    liftElement(el);
+  }
+}
+
+// Live tracking: new nodes added to the wrapped page (SPA-rendered modals)
+// and class/style changes that turn elements fixed (a modal shown via a
+// class on its own or an ancestor container) both land here. Each change is
+// scanned in place; already-lifted elements are skipped because they no
+// longer live inside the observed wrapper. (Shadow-root modals are out of
+// scope for the fixture-proven tracker.)
+function onFixedMutation(mutations) {
+  for (const mutation of mutations) {
+    if (mutation.type === 'attributes') {
+      // A class/style change on an ancestor can make a whole subtree fixed,
+      // so scan the changed element's subtree, not just the element.
+      scanAndLift(mutation.target);
+    } else if (mutation.type === 'childList') {
+      for (const added of mutation.addedNodes) {
+        if (added.nodeType === Node.ELEMENT_NODE) {
+          scanAndLift(added);
+        }
+      }
+    }
+  }
+}
+
+function startFixedObserver() {
+  if (fixedObserver || fixedPolicy === 'scale-everything') {
+    return;
+  }
+  const wrapper = getWrapper();
+  if (!wrapper) {
+    return;
+  }
+  fixedObserver = new MutationObserver(onFixedMutation);
+  fixedObserver.observe(wrapper, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style'],
+  });
+}
+
+function stopFixedObserver() {
+  if (!fixedObserver) {
+    return;
+  }
+  fixedObserver.disconnect();
+  fixedObserver = null;
+}
+
+// Apply the current policy to the live page: restore every lifted element,
+// re-scan the wrapped content under the new policy, and resume tracking.
+// Safe to call with no wrapper (e.g. crisp-text reflow or a disabled site).
+function syncPolicy() {
+  clearProtected();
+  stopFixedObserver();
+  if (!getWrapper() || fixedPolicy === 'scale-everything') {
+    return;
+  }
+  scanAndLift(getWrapper());
+  startFixedObserver();
+}
+
 // The page replaced or cleared body contents, taking the wrapper with it.
 // Re-apply at the current scale so zoom survives the page's own DOM changes,
 // but never fight the page: if the wrapper cannot be re-established cleanly
@@ -594,11 +819,15 @@ export function createVisualZoom({
   onTelemetry = null,
   modifier = DEFAULT_MODIFIER,
   hotkeys = DEFAULT_HOTKEYS,
+  policy = 'scale-everything',
 } = {}) {
   scaleChangeListener = onScaleChange;
   telemetrySink = onTelemetry;
   zoomModifier = modifier;
   inputHotkeys = hotkeys;
+  if (POLICIES.includes(policy)) {
+    fixedPolicy = policy;
+  }
 
   function apply(initialScale = 1) {
     tornDown = false;
@@ -642,6 +871,18 @@ export function createVisualZoom({
     }
   }
 
+  // A new fixed-element policy applies to the live page immediately: protected
+  // elements are lifted or restored without reloading anything.
+  function setPolicy(nextPolicy) {
+    if (!POLICIES.includes(nextPolicy) || nextPolicy === fixedPolicy) {
+      return;
+    }
+    fixedPolicy = nextPolicy;
+    if (getWrapper()) {
+      syncPolicy();
+    }
+  }
+
   return {
     apply,
     dispose,
@@ -653,5 +894,6 @@ export function createVisualZoom({
     isEngaged,
     setInputs,
     setCrispText,
+    setPolicy,
   };
 }
