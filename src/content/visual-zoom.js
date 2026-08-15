@@ -597,47 +597,62 @@ function liftElement(el) {
     return;
   }
   const inlinePosition = el.style.position;
+  const inlinePointerEvents = el.style.pointerEvents;
+  const inlineWidth = el.style.width;
+  // A sticky element only sticks against a scroll container; lifted to the
+  // viewport layer it must be fixed to stay viewport-anchored at 1x. In flow
+  // its auto width fills its scroll container, but a fixed element's auto
+  // width shrinks to its content — pin the computed in-flow width so a
+  // full-width header keeps its full width at 1x. (A sticky that hasn't stuck
+  // yet still anchors at its flow position, which matches the fixture navs
+  // this policy is designed for; below-the-fold chunky stickies are outside
+  // scope.)
+  if (getComputedStyle(el).position === 'sticky') {
+    el.style.width = getComputedStyle(el).width;
+    el.style.position = 'fixed';
+  }
   // The fixed layer passes interaction through with pointer-events:none,
   // which its descendants inherit — so each lifted element re-asserts
   // pointer-events:auto to stay interactive (protected elements must remain
-  // usable, per the ticket). Both overrides are restored on unlift.
-  const inlinePointerEvents = el.style.pointerEvents;
-  // A sticky element only sticks against a scroll container; lifted to the
-  // viewport layer it must be fixed to stay viewport-anchored at 1x. A sticky
-  // that hasn't stuck yet still anchors at its flow position (fixed elements
-  // have no scroll-time stuck state), which matches the fixture navs this
-  // policy is designed for; below-the-fold chunky stickies are outside scope.
-  if (getComputedStyle(el).position === 'sticky') {
-    el.style.position = 'fixed';
-  }
+  // usable, per the ticket). All overrides are restored on unlift.
   el.style.pointerEvents = 'auto';
   protectedElements.set(el, {
     parent: el.parentNode,
     next: el.nextSibling,
     inlinePosition,
     inlinePointerEvents,
+    inlineWidth,
   });
   ensureFixedLayer().appendChild(el);
 }
 
 // Restore a lifted element to its original spot in the wrapped page. If the
-// page destroyed its original parent (body-level content replacement), drop
-// the orphan rather than re-attach stale nodes.
+// page removed the element itself while it was lifted, or destroyed its
+// original parent (body-level content replacement), drop the orphan rather
+// than re-attach stale nodes.
 function unliftElement(el) {
   const record = protectedElements.get(el);
   if (!record) {
     return;
   }
   protectedElements.delete(el);
+  // A page closing a modal deletes its node; the element then lives nowhere,
+  // so restoring it would resurrect something the page intentionally removed.
+  if (!el.isConnected) {
+    return;
+  }
   el.style.position = record.inlinePosition;
   el.style.pointerEvents = record.inlinePointerEvents;
+  el.style.width = record.inlineWidth;
   if (record.parent && record.parent.isConnected) {
     if (record.next && record.next.isConnected) {
       record.parent.insertBefore(el, record.next);
     } else {
       record.parent.appendChild(el);
     }
-  } else if (el.isConnected) {
+  } else {
+    // The page destroyed the original parent (body-level content
+    // replacement): the element only survives in the fixed layer, so drop it.
     el.remove();
   }
 }

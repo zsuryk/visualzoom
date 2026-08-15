@@ -274,4 +274,73 @@ test.describe('07 — fixed-element policy (module)', () => {
     expect(state.backdropPosition).toBe('fixed');
     expect(state.scale).toBe(1);
   });
+
+  test('@fixture a modal removed by the page is not resurrected on teardown', async ({ page }) => {
+    await loadVisualZoom(page, { policy: 'protect-modals' });
+    await page.evaluate(() => vz.setScale(2));
+
+    // A fixed modal appended after zoom is lifted and protected live.
+    await page.evaluate(() => {
+      const wrapper = document.getElementById('visual-zoom-wrapper');
+      const late = document.createElement('div');
+      late.id = 'late-modal-removed';
+      late.style.cssText =
+        'position:fixed;top:60px;left:60px;width:120px;height:80px;' +
+        'background:rgb(0,0,255);z-index:9999;';
+      wrapper.appendChild(late);
+    });
+    await expect(page.locator('#visual-zoom-fixed-layer #late-modal-removed')).toHaveCount(1);
+
+    // The page closes the modal by removing its node while it is zoomed.
+    await page.evaluate(() => document.getElementById('late-modal-removed').remove());
+    await expect(page.locator('#late-modal-removed')).toHaveCount(0);
+
+    // Teardown must not bring the deleted modal back into the page.
+    await page.evaluate(() => vz.dispose());
+    await expect(page.locator('#late-modal-removed')).toHaveCount(0);
+  });
+
+  test('@fixture lifting a sticky header keeps its full width instead of shrinking to content', async ({
+    page,
+  }) => {
+    await loadVisualZoom(page, { policy: 'protect-modals' });
+    await page.evaluate(() => vz.setScale(2));
+
+    // A block-level sticky header appended to the wrapped page: in flow its
+    // auto width fills the scaled wrapper.
+    await page.evaluate(() => {
+      const wrapper = document.getElementById('visual-zoom-wrapper');
+      const sticky = document.createElement('div');
+      sticky.id = 'probe-sticky';
+      sticky.style.cssText = 'position:sticky;top:0;height:30px;background:rgb(255,0,0);';
+      sticky.textContent = 'A sticky header with content';
+      wrapper.appendChild(sticky);
+    });
+
+    // protect-modals leaves it in flow at the scaled page width.
+    const inFlow = await page.locator('#probe-sticky').boundingBox();
+    expect(inFlow.width).toBeCloseTo(2048, 0);
+
+    // protect-sticky-too lifts it viewport-anchored at 1x, keeping its full
+    // width instead of collapsing to its content.
+    await page.evaluate(() => vz.setPolicy('protect-sticky-too'));
+    await expect(page.locator('#visual-zoom-fixed-layer #probe-sticky')).toHaveCount(1);
+    const lifted = await page.locator('#probe-sticky').boundingBox();
+    expect(lifted.width).toBeCloseTo(1024, 0);
+    expect(lifted.height).toBeCloseTo(30, 0);
+
+    // Teardown restores it to its original spot and original inline styles.
+    await page.evaluate(() => vz.dispose());
+    const state = await page.evaluate(() => {
+      const el = document.getElementById('probe-sticky');
+      return {
+        inBody: el ? el.parentElement === document.body : false,
+        width: el ? el.style.width : null,
+        position: el ? getComputedStyle(el).position : null,
+      };
+    });
+    expect(state.inBody).toBe(true);
+    expect(state.width).toBe('');
+    expect(state.position).toBe('sticky');
+  });
 });
