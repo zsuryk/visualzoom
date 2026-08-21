@@ -32,6 +32,7 @@ const POLICY_LABELS = {
 
 const modifierSelect = document.getElementById('modifier');
 const memoryDefault = document.getElementById('memory-default');
+const zoomBelow100 = document.getElementById('zoom-below-100');
 const fixedPolicy = document.getElementById('fixed-policy');
 const hotkeyRoots = {
   zoomIn: {
@@ -80,6 +81,7 @@ function render() {
     hotkeyRoots[slot].key.value = settings.hotkeys[slot].key;
   }
   memoryDefault.checked = settings.memoryDefault;
+  zoomBelow100.checked = settings.zoomBelow100;
   fixedPolicy.value = settings.fixedElementPolicy;
   renderSites();
 }
@@ -196,6 +198,10 @@ for (const slot of HOTKEY_SLOTS) {
 
 memoryDefault.addEventListener('change', () => {
   saveSettings({ memoryDefault: memoryDefault.checked }).then(showSaved);
+});
+
+zoomBelow100.addEventListener('change', () => {
+  saveSettings({ zoomBelow100: zoomBelow100.checked }).then(showSaved);
 });
 
 fixedPolicy.addEventListener('change', () => {

@@ -253,4 +253,65 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await ctx.close();
     }
   });
+
+  test('@extension the zoom-below-100 setting gates zoom-out and applies live from the options page', async () => {
+    const { ctx, extId } = await launchExtension();
+    try {
+      const page = await ctx.newPage();
+      await page.goto(FIXTURE);
+      await page.waitForLoadState('load');
+      await expect(page.locator(WRAPPER)).toHaveCount(1);
+
+      const popup = await openPopup(ctx, page, extId);
+      const options = await ctx.newPage();
+      await options.goto(`chrome-extension://${extId}/options.html`);
+      await expect(options.locator('#zoom-below-100')).not.toBeChecked();
+
+      // Default (gate off): the popup slider floor is 100% and zoom-out
+      // clamps at 100% — the page never goes below 1x. (The popup is a tab
+      // in the test harness, so the fixture page must be the active tab for
+      // popup messages to reach it.)
+      await page.bringToFront();
+      await expect(popup.locator('#slider')).toHaveAttribute('min', '100');
+      await popup.locator('#zoom-out').click();
+      await popup.locator('#zoom-out').click();
+      await expect(popup.locator('#scale')).toHaveText('100%');
+      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
+
+      // Enabling the gate live unlocks the envelope: the popup slider now
+      // reaches down to 30%, and setting 50% drives the page below 1x. (The
+      // gate lands in the content script via storage.onChanged; the first
+      // slider message can race ahead of that notification, so the slider is
+      // re-driven until the page confirms the sub-1x transform.)
+      await options.bringToFront();
+      await options.locator('#zoom-below-100').check();
+      await expect(popup.locator('#slider')).toHaveAttribute('min', '30');
+      await page.bringToFront();
+      await expect
+        .poll(async () => {
+          await popup.locator('#slider').evaluate((el) => {
+            el.value = '50';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+          return wrapperTransform(page);
+        })
+        .toBe('matrix(0.5, 0, 0, 0.5, 0, 0)');
+      await expect(popup.locator('#scale')).toHaveText('50%');
+
+      // Disabling the gate live re-clamps the settled sub-1x scale to 100%,
+      // and the open popup readout follows.
+      await options.bringToFront();
+      await options.locator('#zoom-below-100').uncheck();
+      await expect
+        .poll(() => wrapperTransform(page))
+        .toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(popup.locator('#scale')).toHaveText('100%');
+
+      // The setting persists: a fresh options page still shows it unchecked.
+      await options.reload();
+      await expect(options.locator('#zoom-below-100')).not.toBeChecked();
+    } finally {
+      await ctx.close();
+    }
+  });
 });

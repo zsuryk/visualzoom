@@ -21,6 +21,20 @@ test.describe('02 — scale model pure math', () => {
     expect(clampScale(-2)).toBe(MIN_SCALE);
   });
 
+  test('@unit the zoom-below-100 gate raises the floor to 1x', () => {
+    // With the gate off, the effective floor is 1x: nothing below 100% is
+    // reachable, even though the pure envelope still spans 0.3x–3x.
+    expect(clampScale(0.5, 1)).toBe(1);
+    expect(clampScale(0.31, 1)).toBe(1);
+    expect(clampScale(1.4, 1)).toBe(1.4);
+    expect(scaleOut(1, 1)).toBe(1);
+    expect(scaleOut(1.05, 1)).toBe(1);
+    expect(scaleIn(1, 1)).toBeCloseTo(1.05, 10);
+    // With the gate on, the full envelope floor applies again.
+    expect(clampScale(0.5, MIN_SCALE)).toBe(0.5);
+    expect(scaleOut(MIN_SCALE, MIN_SCALE)).toBe(MIN_SCALE);
+  });
+
   test('@unit steps multiplicatively by ~5% per notch', () => {
     expect(STEP_FACTOR).toBeCloseTo(1.05, 10);
     expect(scaleIn(1)).toBeCloseTo(1.05, 10);

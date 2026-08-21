@@ -256,6 +256,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     page,
   }) => {
     await loadVisualZoom(page);
+    // Zooming below 1x is gated; the letterbox path needs the gate on.
+    await page.evaluate(() => vz.setZoomBelow100(true));
     await page.evaluate(() => vz.setScale(0.5));
 
     // Zoomed out, nothing overflows the viewport: no native scrollbar.

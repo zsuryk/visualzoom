@@ -23,6 +23,12 @@ const formatScale = (scale) => `${Math.round(scale * 100)}%`;
 
 const current = { hostname: null, settings: null, site: null };
 
+// The slider's floor follows the zoom-below-100 setting: 100% when off,
+// 30% when on, so the slider never offers a range the page would clamp away.
+function syncSliderMin() {
+  slider.min = current.settings && current.settings.zoomBelow100 ? '30' : '100';
+}
+
 function render(state) {
   const active = Boolean(state && state.ok && state.active);
   if (!active) {
@@ -62,6 +68,7 @@ function requestState() {
     current.hostname = resp.hostname;
     current.settings = await loadSettings();
     current.site = siteSettings(current.settings, current.hostname);
+    syncSliderMin();
     renderSite();
   });
 }
@@ -106,10 +113,11 @@ chrome.runtime.onMessage.addListener((msg) => {
 // Another surface (options page) changed the settings: refresh the toggles so
 // this popup never shows a stale per-site state.
 subscribeSettings((next) => {
+  current.settings = next;
+  syncSliderMin();
   if (!current.hostname) {
     return;
   }
-  current.settings = next;
   current.site = siteSettings(next, current.hostname);
   renderSite();
 });

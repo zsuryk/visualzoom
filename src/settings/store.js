@@ -30,6 +30,10 @@ export const DEFAULT_SETTINGS = {
   // Per-site zoom memory default: off. Zoom is only ever restored on revisit
   // after an explicit per-site opt-in.
   memoryDefault: false,
+  // Zooming below 100% (letterbox zoom-out) is gated behind an explicit opt-in,
+  // mirroring the trackpad pinch metaphor: zoom-out to overview is allowed
+  // only when the user enables it. Off by default.
+  zoomBelow100: false,
   // Global default for the fixed-element policy (ticket 07 consumes it).
   fixedElementPolicy: 'scale-everything',
   // Per-site overrides indexed by hostname.
@@ -128,6 +132,7 @@ export function sanitizeSettings(input) {
       reset: sanitizeHotkey(raw.hotkeys && raw.hotkeys.reset, DEFAULT_HOTKEYS.reset),
     },
     memoryDefault: raw.memoryDefault === true,
+    zoomBelow100: raw.zoomBelow100 === true,
     fixedElementPolicy: POLICIES.includes(raw.fixedElementPolicy)
       ? raw.fixedElementPolicy
       : DEFAULT_SETTINGS.fixedElementPolicy,

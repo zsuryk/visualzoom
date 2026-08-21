@@ -61,7 +61,10 @@ A wrapper element holding the page's content at its original (unscaled) layout b
 ## Settings
 
 **Scale model**:
-The zoom parameter set: range 0.3×–3×, multiplicative steps of ~5% per gesture notch. Applies to all zoom interactions.
+The zoom parameter set: range 0.3×–3×, multiplicative steps of ~5% per gesture notch. Applies to all zoom interactions. The 0.3× floor is only reachable when the zoom-below-100 setting is on; with it off, zoom-out clamps at 1×.
+
+**Zoom-below-100 setting**:
+The user-configurable gate on zooming out below 1× (the letterbox zoom-out). Off by default, so the scale clamps at 1× unless the user opts in — mirroring a trackpad pinch, which starts from the page at 100%. When on, the full 0.3× floor of the scale model is reachable.
 
 **Per-site zoom memory**:
 A configurable setting controlling whether the settled scale is restored when the user revisits a site. Off by default; when on, the mapping is site → scale.

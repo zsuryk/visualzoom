@@ -164,6 +164,8 @@ test.describe('03 — scale model and zoom inputs', () => {
 
   test('@fixture hotkeys clamp at the 0.3x–3x envelope', async ({ page }) => {
     await loadVisualZoom(page);
+    // The envelope floor is only reachable with the zoom-below-100 gate on.
+    await page.evaluate(() => vz.setZoomBelow100(true));
 
     await page.evaluate(() => vz.setScale(2.9));
     await pressHotkey(page, '+');
@@ -183,6 +185,8 @@ test.describe('03 — scale model and zoom inputs', () => {
     page,
   }) => {
     await loadVisualZoom(page);
+    // The final gesture zooms out below 1x, which needs the gate on.
+    await page.evaluate(() => vz.setZoomBelow100(true));
 
     // Zoom in by gesture: 3 notches.
     await gestureWheel(page, 512, 384, -100, 3, { altKey: true });
@@ -202,6 +206,36 @@ test.describe('03 — scale model and zoom inputs', () => {
     await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBe(0.3);
     await pressHotkey(page, '0');
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+  });
+
+  test('@fixture the zoom-below-100 gate clamps zoom-out at 100% by default and unlocks the envelope live', async ({
+    page,
+  }) => {
+    await loadVisualZoom(page);
+
+    // Default: zooming out stops exactly at 100%.
+    await page.evaluate(() => vz.setScale(1.05));
+    await pressHotkey(page, '-');
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+    await pressHotkey(page, '-');
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+
+    // Wheel zoom-out clamps the same way.
+    await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+
+    // Directly setting a sub-1x scale is clamped to 100% too.
+    await page.evaluate(() => vz.setScale(0.5));
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+
+    // Enabling the gate live lets zoom-out pass 1x down to the envelope floor.
+    await page.evaluate(() => vz.setZoomBelow100(true));
+    await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
+    expect(await page.evaluate(() => vz.getScale())).toBe(0.3);
+
+    // Disabling the gate live re-clamps a settled sub-1x scale to 100%.
+    await page.evaluate(() => vz.setZoomBelow100(false));
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
   });
 

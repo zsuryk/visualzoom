@@ -7,20 +7,23 @@ export const STEP_FACTOR = 1.05;
 // size exceeds it get the one-time layer-budget warning and a telemetry line.
 export const MAX_TEXTURE_PX = 8192;
 
-export function clampScale(scale) {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+// The pure scale math spans the full 0.3x–3x envelope; the zoom-below-100
+// setting picks the effective floor at runtime (1x when off, MIN_SCALE when
+// on) and hands it in via the minScale argument.
+export function clampScale(scale, minScale = MIN_SCALE) {
+  return Math.min(MAX_SCALE, Math.max(minScale, scale));
 }
 
 export function budgetExceeded(width, height, scale) {
   return width * scale > MAX_TEXTURE_PX || height * scale > MAX_TEXTURE_PX;
 }
 
-export function scaleIn(scale) {
-  return clampScale(scale * STEP_FACTOR);
+export function scaleIn(scale, minScale = MIN_SCALE) {
+  return clampScale(scale * STEP_FACTOR, minScale);
 }
 
-export function scaleOut(scale) {
-  return clampScale(scale / STEP_FACTOR);
+export function scaleOut(scale, minScale = MIN_SCALE) {
+  return clampScale(scale / STEP_FACTOR, minScale);
 }
 
 export function scaledSize(width, height, scale) {
@@ -91,6 +94,10 @@ let scale = 1;
 let crispText = false;
 let zoomModifier = DEFAULT_MODIFIER;
 let inputHotkeys = DEFAULT_HOTKEYS;
+// Whether zooming below 100% is allowed (the letterbox zoom-out). Off by
+// default: the scale clamps at 1x unless the user opts in, mirroring how a
+// trackpad pinch starts from the page at 100%.
+let zoomBelow100 = false;
 let origWidth = 0;
 let origHeight = 0;
 let pageBackground = '';
@@ -156,6 +163,12 @@ function getWrapper() {
   return document.getElementById(WRAPPER_ID);
 }
 
+// The effective scale floor: 1x unless zoom-below-100 is enabled, in which
+// case the full 0.3x envelope floor applies.
+function effectiveMinScale() {
+  return zoomBelow100 ? MIN_SCALE : 1;
+}
+
 function applyLayout(nextScale, target) {
   const html = document.documentElement;
   target.style.transform = `scale(${nextScale})`;
@@ -181,7 +194,7 @@ function notifyScale() {
 }
 
 function applyScale(nextScale) {
-  scale = clampScale(nextScale);
+  scale = clampScale(nextScale, effectiveMinScale());
   const active = getWrapper();
   if (active) {
     applyLayout(scale, active);
@@ -228,7 +241,10 @@ function onWheel(event) {
   if (!hasZoomModifier(event) || !isEngaged()) {
     return;
   }
-  const nextScale = clampScale(scale * Math.pow(STEP_FACTOR, notchFromWheel(event)));
+  const nextScale = clampScale(
+    scale * Math.pow(STEP_FACTOR, notchFromWheel(event)),
+    effectiveMinScale()
+  );
   if (nextScale === scale) {
     return;
   }
@@ -248,9 +264,9 @@ function onKeyDown(event) {
   }
   let nextScale;
   if (matchesCombo(event, inputHotkeys.zoomIn)) {
-    nextScale = scaleIn(scale);
+    nextScale = scaleIn(scale, effectiveMinScale());
   } else if (matchesCombo(event, inputHotkeys.zoomOut)) {
-    nextScale = scaleOut(scale);
+    nextScale = scaleOut(scale, effectiveMinScale());
   } else if (matchesCombo(event, inputHotkeys.reset)) {
     nextScale = 1;
   } else {
@@ -835,6 +851,7 @@ export function createVisualZoom({
   modifier = DEFAULT_MODIFIER,
   hotkeys = DEFAULT_HOTKEYS,
   policy = 'scale-everything',
+  zoomBelow100: allowZoomBelow100 = false,
 } = {}) {
   scaleChangeListener = onScaleChange;
   telemetrySink = onTelemetry;
@@ -843,6 +860,7 @@ export function createVisualZoom({
   if (POLICIES.includes(policy)) {
     fixedPolicy = policy;
   }
+  zoomBelow100 = allowZoomBelow100;
 
   function apply(initialScale = 1) {
     tornDown = false;
@@ -872,7 +890,7 @@ export function createVisualZoom({
   }
 
   function step(direction) {
-    setScale(direction > 0 ? scaleIn(scale) : scaleOut(scale));
+    setScale(direction > 0 ? scaleIn(scale, effectiveMinScale()) : scaleOut(scale, effectiveMinScale()));
   }
 
   // Settings changes land here live: a new gesture modifier or hotkey combo
@@ -898,6 +916,19 @@ export function createVisualZoom({
     }
   }
 
+  // The zoom-below-100 gate applies live: turning it on lets zoom-out pass
+  // 1x; turning it off re-clamps the current scale (a settled sub-1x scale
+  // jumps back to 100%).
+  function setZoomBelow100(enabled) {
+    zoomBelow100 = Boolean(enabled);
+    if (zoomBelow100) {
+      return;
+    }
+    if (scale < 1) {
+      applyScale(1);
+    }
+  }
+
   return {
     apply,
     dispose,
@@ -910,5 +941,6 @@ export function createVisualZoom({
     setInputs,
     setCrispText,
     setPolicy,
+    setZoomBelow100,
   };
 }

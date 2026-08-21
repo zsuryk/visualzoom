@@ -9,7 +9,7 @@ import {
 } from '../src/settings/store.js';
 
 test.describe('06 — settings core', () => {
-  test('@unit defaults: alt modifier, per-site memory off, crisp-text never on', () => {
+  test('@unit defaults: alt modifier, per-site memory off, zoom-below-100 off, crisp-text never on', () => {
     const s = sanitizeSettings(undefined);
     expect(s.zoomModifier).toBe('altKey');
     expect(s.hotkeys).toEqual({
@@ -18,9 +18,11 @@ test.describe('06 — settings core', () => {
       reset: { modifier: 'altKey', key: '0' },
     });
     expect(s.memoryDefault).toBe(false);
+    expect(s.zoomBelow100).toBe(false);
     expect(s.fixedElementPolicy).toBe('scale-everything');
     expect(s.sites).toEqual({});
     expect(DEFAULT_SETTINGS.memoryDefault).toBe(false);
+    expect(DEFAULT_SETTINGS.zoomBelow100).toBe(false);
   });
 
   test('@unit invalid fields fall back to defaults, unknown fields are dropped', () => {
@@ -28,6 +30,7 @@ test.describe('06 — settings core', () => {
       zoomModifier: 'capsLock',
       hotkeys: { zoomIn: { modifier: 3, key: '' }, zoomOut: 'junk', reset: { modifier: 'ctrlKey', key: '0' } },
       memoryDefault: 'yes',
+      zoomBelow100: 'yes',
       fixedElementPolicy: 'reflow-everything',
       bogus: 42,
       sites: 'nope',
@@ -37,6 +40,7 @@ test.describe('06 — settings core', () => {
     expect(s.hotkeys.zoomOut).toEqual({ modifier: 'altKey', key: '-' });
     expect(s.hotkeys.reset).toEqual({ modifier: 'ctrlKey', key: '0' });
     expect(s.memoryDefault).toBe(false);
+    expect(s.zoomBelow100).toBe(false);
     expect(s.fixedElementPolicy).toBe('scale-everything');
     expect(s.sites).toEqual({});
   });
@@ -50,6 +54,8 @@ test.describe('06 — settings core', () => {
       const s = sanitizeSettings({ fixedElementPolicy: policy });
       expect(s.fixedElementPolicy).toBe(policy);
     }
+    expect(sanitizeSettings({ zoomBelow100: true }).zoomBelow100).toBe(true);
+    expect(sanitizeSettings({ zoomBelow100: 'yes' }).zoomBelow100).toBe(false);
   });
 
   test('@unit per-site overrides are sanitized and empties are dropped', () => {

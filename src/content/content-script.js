@@ -66,6 +66,9 @@ function sync() {
   // site) lifts or restores protected elements on already-open pages without
   // reloading anything.
   controller.setPolicy(site.fixedElementPolicy);
+  // The zoom-below-100 gate applies live too: toggling it lets zoom-out pass
+  // 1x, or re-clamps a settled sub-1x scale back to 100%.
+  controller.setZoomBelow100(settings.zoomBelow100);
   if (site.enabled) {
     if (!controller.isEngaged()) {
       const initial = site.memory && site.scale !== 1 ? site.scale : 1;
