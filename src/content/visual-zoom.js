@@ -201,6 +201,11 @@ function applyScale(nextScale) {
     checkLayerBudget();
   } else if (crispText) {
     applyCrispLayout(scale);
+  } else if (scale !== 1) {
+    // Transitioning from dormant to active: wrap now.
+    startObserving();
+    wrapBody(scale);
+    return;
   }
   notifyScale();
 }
@@ -240,6 +245,10 @@ function notchFromWheel(event) {
 function onWheel(event) {
   if (!hasZoomModifier(event) || !isEngaged()) {
     return;
+  }
+  // Lazy-wrap on first gesture from dormant mode.
+  if (!getWrapper()) {
+    wrapBody(scale);
   }
   const nextScale = clampScale(
     scale * Math.pow(STEP_FACTOR, notchFromWheel(event)),
@@ -384,7 +393,7 @@ function unwrap() {
 // The tool is engaged when either the wrapper is up (live transform) or the
 // crisp-text reflow is active — so gesture/hotkey zoom keep working in both.
 function isEngaged() {
-  return Boolean(getWrapper()) || crispText;
+  return listenersAttached || Boolean(getWrapper()) || crispText;
 }
 
 // Enter/leave the crisp-text escape hatch. Entering reflows the page at the
@@ -870,6 +879,12 @@ export function createVisualZoom({
     budgetNoticeShown = false;
     if (crispText) {
       applyScale(initialScale);
+      return;
+    }
+    // Dormant mode: no zoom needed, skip DOM surgery entirely.
+    // Listeners are attached so a future gesture can wrap on demand.
+    if (initialScale === 1 && !zoomBelow100) {
+      attachListeners();
       return;
     }
     startObserving();
