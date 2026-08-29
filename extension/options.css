@@ -59,6 +59,17 @@ h1 {
   color: #2e7d32;
   font-size: 13px;
   font-weight: 600;
+  height: 1.2em;
+  overflow: hidden;
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+
+.saved[hidden] {
+  display: block;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .card {
@@ -158,9 +169,9 @@ input[type="text"] {
 }
 
 .hotkeys {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .hotkey {
