@@ -24,6 +24,7 @@
           will not work unless you change this pref to 0 or 1 in
           <code>about:config</code>.
         </p>
+        <p id="ctrl-warning" class="warning" hidden></p>
       </div>
       <div class="row">
         <span class="label">Zoom hotkeys</span>
@@ -46,6 +47,7 @@
         </div>
         <p class="hint">Each hotkey is its own modifier + key combo. Keys are
         <code>event.key</code> values (e.g. <code>+</code>, <code>-</code>, <code>0</code>).</p>
+        <div id="hotkey-warnings"></div>
       </div>
     </section>
 
@@ -81,6 +83,10 @@
         <p class="hint">Off by default: zooming out stops at 100%, like a
         trackpad pinch that starts at the page's real size. Enable to zoom out
         to 30% and letterbox the page.</p>
+        <p id="zoom-below-warning" class="warning" hidden>
+          <strong>Warning:</strong> Allowing zoom below 100% is experimental
+          and may cause layout issues or broken scrolling on some pages.
+        </p>
       </div>
       <div class="row">
         <label for="fixed-policy">Fixed-element policy</label>
@@ -91,6 +97,11 @@
         </select>
         <p class="hint">How <code>position: fixed</code> / <code>sticky</code>
         elements behave under zoom.</p>
+        <p id="fixed-policy-warning" class="warning" hidden>
+          <strong>Warning:</strong> Non-default fixed-element policies are
+          experimental and may cause elements to behave unexpectedly or
+          disappear on some pages.
+        </p>
       </div>
     </section>
 

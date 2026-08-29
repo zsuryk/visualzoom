@@ -1,3 +1,4 @@
+/* global __BROWSER__ */
 /* The options page is the full-width settings surface: the gesture zoom
    modifier, the three zoom hotkeys, the per-site memory default, the
    fixed-element policy default, and per-site overrides (memory + the crisp-text
@@ -36,6 +37,10 @@ const POLICY_LABELS = {
 
 const modifierSelect = document.getElementById('modifier');
 const altWarning = document.getElementById('alt-warning');
+const ctrlWarning = document.getElementById('ctrl-warning');
+const zoomBelowWarning = document.getElementById('zoom-below-warning');
+const fixedPolicyWarning = document.getElementById('fixed-policy-warning');
+const hotkeyWarnings = document.getElementById('hotkey-warnings');
 const memoryDefault = document.getElementById('memory-default');
 const zoomBelow100 = document.getElementById('zoom-below-100');
 const fixedPolicy = document.getElementById('fixed-policy');
@@ -84,9 +89,66 @@ function showSaved() {
   }, 1200);
 }
 
+const HOTKEY_LABELS = { zoomIn: 'Zoom in', zoomOut: 'Zoom out', reset: 'Reset' };
+
+function updateWarnings() {
+  altWarning.hidden = settings.zoomModifier !== 'altKey';
+  if (!altWarning.hidden) {
+    if (__BROWSER__ === 'firefox') {
+      altWarning.innerHTML =
+        '<strong>Warning:</strong> Firefox intercepts Alt+scroll for history ' +
+        'navigation (<code>mousewheel.with_alt.action</code> defaults to 2) ' +
+        'and never delivers the wheel event to page JavaScript. Gesture zoom ' +
+        'will not work unless you change this pref to 0 or 1 in ' +
+        '<code>about:config</code>.';
+    } else {
+      altWarning.innerHTML =
+        '<strong>Warning:</strong> Alt+scroll may be intercepted by the ' +
+        'operating system or other applications on some platforms. Gesture ' +
+        'zoom may not work reliably.';
+    }
+  }
+  ctrlWarning.hidden = settings.zoomModifier !== 'ctrlKey';
+  if (!ctrlWarning.hidden) {
+    if (__BROWSER__ === 'firefox') {
+      ctrlWarning.innerHTML =
+        '<strong>Warning:</strong> Ctrl+scroll is Firefox\'s native reflow ' +
+        '&mdash; gesture zoom may not work reliably. Ctrl+key shortcuts ' +
+        '(Ctrl++, Ctrl+-) also conflict with Firefox\'s zoom and may ' +
+        'not fire as expected.';
+    } else {
+      ctrlWarning.innerHTML =
+        '<strong>Warning:</strong> Ctrl+scroll is Chrome\'s native reflow ' +
+        '&mdash; gesture zoom may not work reliably. Ctrl+key shortcuts ' +
+        '(Ctrl++, Ctrl+-) also conflict with Chrome\'s zoom and may ' +
+        'not fire as expected.';
+    }
+  }
+  zoomBelowWarning.hidden = !settings.zoomBelow100;
+  fixedPolicyWarning.hidden = settings.fixedElementPolicy === 'scale-everything';
+
+  hotkeyWarnings.textContent = '';
+  for (const slot of HOTKEY_SLOTS) {
+    const hk = settings.hotkeys[slot];
+    if (hk.modifier === 'ctrlKey') {
+      const p = document.createElement('p');
+      p.className = 'warning';
+      if (__BROWSER__ === 'firefox') {
+        p.innerHTML =
+          `<strong>Warning:</strong> ${HOTKEY_LABELS[slot]} (Ctrl+${hk.key}) ` +
+          'conflicts with Firefox\'s native zoom shortcut and may not work as expected.';
+      } else {
+        p.innerHTML =
+          `<strong>Warning:</strong> ${HOTKEY_LABELS[slot]} (Ctrl+${hk.key}) ` +
+          'conflicts with Chrome\'s native zoom shortcut and may not work as expected.';
+      }
+      hotkeyWarnings.appendChild(p);
+    }
+  }
+}
+
 function render() {
   fillModifierSelect(modifierSelect, settings.zoomModifier);
-  altWarning.hidden = settings.zoomModifier !== 'altKey';
   for (const slot of HOTKEY_SLOTS) {
     fillModifierSelect(hotkeyRoots[slot].modifier, settings.hotkeys[slot].modifier);
     hotkeyRoots[slot].key.value = settings.hotkeys[slot].key;
@@ -97,6 +159,7 @@ function render() {
   themeSelect.value = settings.theme;
   applyTheme(settings.theme);
   renderSites();
+  updateWarnings();
 }
 
 function applyTheme(theme) {
@@ -200,8 +263,11 @@ function renderSites() {
 }
 
 modifierSelect.addEventListener('change', () => {
-  altWarning.hidden = modifierSelect.value !== 'altKey';
-  saveSettings({ zoomModifier: modifierSelect.value }).then(showSaved);
+  saveSettings({ zoomModifier: modifierSelect.value }).then((next) => {
+    settings = next;
+    updateWarnings();
+    showSaved();
+  });
 });
 
 for (const slot of HOTKEY_SLOTS) {
@@ -214,7 +280,9 @@ for (const slot of HOTKEY_SLOTS) {
         [slot]: { modifier: modifier.value, key: key.value.trim() || next.hotkeys[slot].key },
       },
     })).then((next) => {
+      settings = next;
       key.value = next.hotkeys[slot].key;
+      updateWarnings();
       showSaved();
     });
   };
@@ -228,11 +296,19 @@ memoryDefault.addEventListener('change', () => {
 });
 
 zoomBelow100.addEventListener('change', () => {
-  saveSettings({ zoomBelow100: zoomBelow100.checked }).then(showSaved);
+  saveSettings({ zoomBelow100: zoomBelow100.checked }).then((next) => {
+    settings = next;
+    updateWarnings();
+    showSaved();
+  });
 });
 
 fixedPolicy.addEventListener('change', () => {
-  saveSettings({ fixedElementPolicy: fixedPolicy.value }).then(showSaved);
+  saveSettings({ fixedElementPolicy: fixedPolicy.value }).then((next) => {
+    settings = next;
+    updateWarnings();
+    showSaved();
+  });
 });
 
 themeSelect.addEventListener('change', () => {

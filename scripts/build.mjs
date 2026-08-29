@@ -33,6 +33,9 @@ await Promise.all(
       format: 'iife',
       target: ['chrome110'],
       legalComments: 'none',
+      define: {
+        __BROWSER__: JSON.stringify(target),
+      },
     })
   )
 );
