@@ -200,6 +200,12 @@ function applyScale(nextScale) {
   scale = clampScale(nextScale, effectiveMinScale());
   const active = getWrapper();
   if (active) {
+    if (scale === 1 && !crispText) {
+      // Back to 100%: restore the original DOM so sites that expect direct
+      // body children (e.g. YouTube thumbnail autoplay) work again.
+      unwrap();
+      return;
+    }
     applyLayout(scale, active);
     checkLayerBudget();
   } else if (crispText) {

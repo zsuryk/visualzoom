@@ -229,9 +229,11 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('');
     expect(await page.evaluate(() => document.documentElement.style.background)).toBe('');
 
-    // And applying again works from scratch.
+    // And applying again enters dormant mode (no wrapper at 1x).
     await page.evaluate(() => vz.apply());
-    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+      true
+    );
   });
 
   test('@fixture re-applying after navigation does not double-wrap', async ({ page }) => {
@@ -245,10 +247,10 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz.apply();
     });
 
-    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
-    expect(
-      await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)
-    ).toBe(true);
+    // Dormant mode: no wrapper at 1x, just listeners.
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+      true
+    );
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
   });
 
@@ -331,7 +333,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     await loadVisualZoom(page);
 
     const children = () => page.evaluate(() => document.body.children.length);
-    expect(await children()).toBe(1);
+    // Dormant mode: no wrapper at 1x.
+    expect(await children()).toBe(3);
 
     // Re-applying (a second controller instance) does not double-wrap.
     await page.evaluate(async () => {
@@ -339,7 +342,7 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz2 = mod.createVisualZoom();
       vz2.apply();
     });
-    expect(await children()).toBe(1);
+    expect(await children()).toBe(3);
 
     // Zooming still works after the double apply.
     await page.evaluate(() => vz.setScale(3));
@@ -358,8 +361,59 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       await page.evaluate(() => !document.getElementById('visual-zoom-wrapper'))
     ).toBe(true);
 
-    // ...and applying again works from scratch.
+    // ...and applying again enters dormant mode (no wrapper at 1x).
     await page.evaluate(() => vz.apply());
-    expect(await children()).toBe(1);
+    expect(await children()).toBe(3);
+  });
+
+  test('@fixture zoom in then back to 100% restores body children (YouTube autoplay)', async ({
+    page,
+  }) => {
+    await loadVisualZoom(page);
+
+    // Zoom in: body children move into the wrapper.
+    await page.evaluate(() => vz.setScale(1.5));
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
+      true
+    );
+    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
+
+    // Zoom back to 100%: wrapper is removed, body children are restored.
+    await page.evaluate(() => vz.setScale(1));
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+      true
+    );
+    // The fixture body has 3 children: scroll region, modal backdrop, script.
+    expect(await page.evaluate(() => document.body.children.length)).toBe(3);
+
+    // The page is back to its original DOM structure: direct body children are
+    // in place, so sites that expect them (YouTube thumbnail autoplay) work.
+    expect(
+      await page.evaluate(() => document.body.children[0].id)
+    ).toBe('fixture-scroll');
+    expect(
+      await page.evaluate(() => document.body.children[1].id)
+    ).toBe('fixture-modal-backdrop');
+  });
+
+  test('@fixture zoom in then hotkey reset to 100% restores body children', async ({ page }) => {
+    await loadVisualZoom(page);
+    await page.evaluate(() => vz.setScale(2));
+
+    // Reset via hotkey (Shift+0) returns to 100% and unwraps.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: '0',
+          bubbles: true,
+          cancelable: true,
+          shiftKey: true,
+        })
+      );
+    });
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+      true
+    );
+    expect(await page.evaluate(() => document.body.children.length)).toBe(3);
   });
 });

@@ -275,8 +275,9 @@ test.describe('04 — wrapper survival and graceful teardown', () => {
     );
 
     // The page renders fresh content, and the extension re-engages. apply()
-    // wraps the new content fresh, clears the stale notice, and zoom works
-    // again from 1x — no state from before the teardown leaks through.
+    // enters dormant mode (listeners attached, no wrapper at 1x), clears the
+    // stale notice, and zoom works again — no state from before the teardown
+    // leaks through.
     await page.evaluate(() => {
       const root = document.createElement('div');
       root.id = 're-rendered';
@@ -285,22 +286,26 @@ test.describe('04 — wrapper survival and graceful teardown', () => {
     });
     await page.evaluate(() => vz.apply());
     await expect(page.locator(NOTICE)).toHaveCount(0);
+    // Dormant mode: no wrapper at 1x.
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+      true
+    );
+    expect(await page.evaluate(() => vz.getScale())).toBe(1);
+
+    // Zooming works from dormant mode.
+    await pressHotkey(page, '+');
+    expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.05, 10);
     expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
       true
     );
-    const state = await page.evaluate(() => ({
-      scale: vz.getScale(),
-      inside: document.getElementById('re-rendered').closest('#visual-zoom-wrapper') ===
-        document.getElementById('visual-zoom-wrapper'),
-    }));
-    expect(state.scale).toBe(1);
-    expect(state.inside).toBe(true);
-
-    await pressHotkey(page, '+');
-    expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.05, 10);
+    expect(
+      await page.evaluate(() =>
+        document.getElementById('re-rendered').closest('#visual-zoom-wrapper') !== null
+      )
+    ).toBe(true);
   });
 
-  test('@fixture navigating away and back re-applies the wrapper fresh without leaking state', async ({
+  test('@fixture navigating away and back re-applies fresh without leaking state', async ({
     page,
   }) => {
     await loadVisualZoom(page);
@@ -313,22 +318,28 @@ test.describe('04 — wrapper survival and graceful teardown', () => {
     await page.reload();
     await applyVisualZoom(page);
 
+    // Dormant mode: no wrapper at 1x after reload.
     const state = await page.evaluate(() => ({
       wrapped: document.getElementById('visual-zoom-wrapper') !== null,
       children: document.body.children.length,
       scale: vz.getScale(),
       scrollTop: document.documentElement.scrollTop,
       scrollLeft: document.documentElement.scrollLeft,
-      transform: getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform,
       notice: document.getElementById('visual-zoom-notice') !== null,
     }));
-    expect(state.wrapped).toBe(true);
-    expect(state.children).toBe(1);
+    expect(state.wrapped).toBe(false);
+    expect(state.children).toBe(3);
     // Nothing leaks from the previous page: fresh scale, clean scroll, no notice.
     expect(state.scale).toBe(1);
     expect(state.scrollTop).toBe(0);
     expect(state.scrollLeft).toBe(0);
-    expect(state.transform).toBe('matrix(1, 0, 0, 1, 0, 0)');
     expect(state.notice).toBe(false);
+
+    // Zooming still works from dormant mode.
+    await page.evaluate(() => vz.setScale(1.5));
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
+      true
+    );
+    expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.5, 10);
   });
 });
