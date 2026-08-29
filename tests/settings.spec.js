@@ -5,7 +5,6 @@ import { chromiumLaunchOptions, PORT } from './helpers/browser-env.js';
 const EXTENSION_PATH = fileURLToPath(new URL('../extension/', import.meta.url));
 const BASE = `http://127.0.0.1:${PORT}`;
 const FIXTURE = `${BASE}/fixtures/native-zoom-breaking.html`;
-const WRAPPER = '#visual-zoom-wrapper';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -72,10 +71,8 @@ async function dispatchWheel(page, deltaY, modifiers = {}) {
   );
 }
 
-const wrapperTransform = (page) =>
-  page.evaluate(
-    () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
-  );
+const bodyTransform = (page) =>
+  page.evaluate(() => document.body.style.transform);
 
 test.describe('06 — settings, options page, per-site behavior, crisp text', () => {
   test('@extension the popup shows per-site toggles; disabling a site leaves it untouched until re-enabled', async () => {
@@ -84,27 +81,40 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       const popup = await openPopup(ctx, page, extId);
       await expect(popup.locator('#site-section')).toBeVisible();
       await expect(popup.locator('#site-name')).toHaveText('127.0.0.1');
       await expect(popup.locator('#site-enabled')).toBeChecked();
 
-      // Disabling visual zoom for the site leaves the page untouched: the
-      // wrapper is gone, the scale is 1x, and the popup reports inactive.
+      // Disabling visual zoom for the site leaves the page untouched: no
+      // transform, scale is 1x, and the popup reports inactive.
       await popup.locator('#site-enabled').uncheck();
-      await expect(page.locator(WRAPPER)).toHaveCount(0);
-      await expect(page.locator(WRAPPER)).not.toBeAttached();
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
       await expect(popup.locator('#status')).toHaveText(
         'Visual Zoom is not active on this page.'
       );
 
-      // Re-enabling applies visual zoom fresh: the wrapper is back at 1x.
+      // Re-enabling enters dormant mode (no transform at 1x).
       await popup.locator('#site-enabled').check();
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
-      await expect(popup.locator('#status')).toHaveText('Zoom level on the current page');
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
+      // The setting change propagates through storage.onChanged to the content
+      // script, which re-applies in dormant mode and reports active state back
+      // via vz-scale-changed. Poll until the popup receives the update.
+      await expect(popup.locator('#status')).toHaveText('Zoom level on the current page', {
+        timeout: 10000,
+      });
     } finally {
       await ctx.close();
     }
@@ -116,11 +126,16 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
+
       const popup = await openPopup(ctx, page, extId);
 
       // Default: memory off. Zoom to 150%, reload — the previous scale is
-      // never restored, the page comes back at 1x.
+      // never restored, the page comes back at 1x (dormant mode).
       await popup.locator('#slider').evaluate((el) => {
         el.value = '150';
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -128,8 +143,10 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await expect(popup.locator('#scale')).toHaveText('150%');
       await page.reload();
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       // Opt in to memory for this site, zoom to 105%, and wait for the settled
       // scale to be committed to storage.
@@ -141,17 +158,18 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       // Revisit the site: the settled scale is restored.
       await page.reload();
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
       await expect
-        .poll(() => wrapperTransform(page))
-        .toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+        .poll(() => bodyTransform(page))
+        .toBe('scale(1.05)');
 
       // The remembered scale is not applied to other sites: localhost is a
-      // different hostname, so it comes back at 1x.
+      // different hostname, so it comes back at 1x (dormant mode).
       await page.goto(`${BASE.replace('127.0.0.1', 'localhost')}/fixtures/native-zoom-breaking.html`);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
     } finally {
       await ctx.close();
     }
@@ -163,7 +181,11 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       const options = await ctx.newPage();
       await options.goto(`chrome-extension://${extId}/options.html`);
@@ -187,19 +209,26 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
 
       // The open page reacts live: Ctrl+wheel now gestures, Shift+wheel does not.
       await dispatchWheel(page, -100, { shiftKey: true });
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
+      // Still dormant — no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
       await dispatchWheel(page, -100, { ctrlKey: true });
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+      await expect(bodyTransform(page)).resolves.toBe('scale(1.05)');
 
       // The hotkey change is live too: Ctrl+x zooms in, Ctrl++ does not.
       await dispatchKey(page, 'x', { ctrlKey: true });
       await expect
-        .poll(() => wrapperTransform(page))
-        .toBe('matrix(1.1025, 0, 0, 1.1025, 0, 0)');
+        .poll(() => bodyTransform(page))
+        .toBe('scale(1.1025)');
       await dispatchKey(page, '+', { ctrlKey: true });
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1.1025, 0, 0, 1.1025, 0, 0)');
+      await expect(bodyTransform(page)).resolves.toBe('scale(1.1025)');
       await dispatchKey(page, '0', { ctrlKey: true });
-      await expect(page.locator(WRAPPER)).toHaveCount(0);
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       // The settings persist: a fresh options page shows them, and a fresh
       // page load still uses the new combos.
@@ -208,11 +237,15 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await expect(options.locator('#hotkey-zoom-in-key')).toHaveValue('x');
       await page.reload();
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x after reload.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
       await dispatchWheel(page, -100, { ctrlKey: true });
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+      await expect(bodyTransform(page)).resolves.toBe('scale(1.05)');
       await dispatchWheel(page, -100, { shiftKey: true });
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+      await expect(bodyTransform(page)).resolves.toBe('scale(1.05)');
     } finally {
       await ctx.close();
     }
@@ -224,13 +257,19 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       const popup = await openPopup(ctx, page, extId);
       await test.step('zoom popup to 105', async () => {
         await popup.locator('#zoom-in').click();
         await expect(popup.locator('#scale')).toHaveText('105%');
       });
+      // After zooming, the body-transform approach produces a live transform.
+      await expect(bodyTransform(page)).resolves.toBe('scale(1.05)');
 
       // Enable the crisp-text escape hatch for this site from the options page.
       const options = await ctx.newPage();
@@ -241,25 +280,30 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
         await options.locator('.site-row').filter({ hasText: '127.0.0.1' }).locator('.site-crisp').check();
       });
 
-      // The already-open page reacts without any reload: the wrapper is torn
-      // down and the page reflows at the settled scale.
+      // The already-open page reacts without any reload: the body transform is
+      // torn down and the page reflows at the settled scale.
       await test.step('assert crisp reflow', async () => {
-        await expect(page.locator(WRAPPER)).toHaveCount(0);
+        await expect(async () => {
+          const transform = await bodyTransform(page);
+          expect(transform).toBe('');
+        }).toPass();
         await expect
           .poll(() => page.evaluate(() => getComputedStyle(document.documentElement).zoom))
           .toBe('1.05');
-        await expect(page.locator('#visual-zoom-wrapper')).toHaveCount(0);
+        await expect(async () => {
+          const transform = await bodyTransform(page);
+          expect(transform).toBe('');
+        }).toPass();
       });
 
       // Disabling the escape hatch returns to the live transform at the same
       // scale.
-      await test.step('disable crisp and assert wrap returns', async () => {
+      await test.step('disable crisp and assert transform returns', async () => {
         await options.locator('.site-row').filter({ hasText: '127.0.0.1' }).locator('.site-crisp').uncheck();
-        await expect(page.locator(WRAPPER)).toHaveCount(1);
         await expect
           .poll(() => page.evaluate(() => document.documentElement.style.zoom))
           .toBe('');
-        await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+        await expect(bodyTransform(page)).resolves.toBe('scale(1.05)');
       });
     } finally {
       await ctx.close();
@@ -276,7 +320,10 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).not.toBe('');
+      }).toPass();
 
       const popup = await openPopup(ctx, page, extId);
       const options = await ctx.newPage();
@@ -292,7 +339,7 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await popup.locator('#zoom-out').click();
       await popup.locator('#zoom-out').click();
       await expect(popup.locator('#scale')).toHaveText('100%');
-      await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(bodyTransform(page)).resolves.toBe('scale(1)');
 
       // Enabling the gate live unlocks the envelope: zoom-out via the popup
       // button now reaches below 1x. (The gate lands in the content script
@@ -303,17 +350,17 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await expect
         .poll(async () => {
           await popup.locator('#zoom-out').click();
-          return wrapperTransform(page);
+          return bodyTransform(page);
         })
-        .not.toBe('matrix(1, 0, 0, 1, 0, 0)');
+        .not.toBe('scale(1)');
 
       // Disabling the gate live re-clamps the settled sub-1x scale to 100%,
       // and the open popup readout follows.
       await options.bringToFront();
       await options.locator('#zoom-below-100').uncheck();
       await expect
-        .poll(() => wrapperTransform(page))
-        .toBe('matrix(1, 0, 0, 1, 0, 0)');
+        .poll(() => bodyTransform(page))
+        .toBe('scale(1)');
 
       // The setting persists: a fresh options page still shows it unchecked.
       await options.reload();

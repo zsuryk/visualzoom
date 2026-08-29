@@ -74,17 +74,19 @@ async function probePixel(page, shot, x, y) {
 test.describe('03 — scale model and zoom inputs', () => {
   test('@fixture modifier+wheel zoom anchors the pixel under the cursor', async ({ page }) => {
     await loadVisualZoom(page);
+
+    // Dormant mode: no transform at 1x. Zoom in first to create it.
+    await gestureWheel(page, 512, 384, -100, 1, { shiftKey: true });
     await page.evaluate(() => {
-      // A solid-red marker centred at the viewport centre at scale 1 with
-      // zero scroll: page coordinate (512, 384), size 60 -> spans
+      // A solid-red marker centred at the viewport centre at the initial zoom
+      // level: page coordinate (512, 384), size 60 -> spans
       // (482..542) x (354..414) on screen.
-      const wrapper = document.getElementById('visual-zoom-wrapper');
       const marker = document.createElement('div');
       marker.id = 'anchor-marker';
       marker.style.cssText =
         'position:absolute;left:482px;top:354px;width:60px;height:60px;' +
         'background:rgb(255,0,0);z-index:999;';
-      wrapper.appendChild(marker);
+      document.body.appendChild(marker);
     });
 
     const cx = 512;
@@ -102,7 +104,7 @@ test.describe('03 — scale model and zoom inputs', () => {
         py: (html.scrollTop + cy) / vz.getScale(),
       };
     }, { cx, cy });
-    expect(before.scale).toBe(1);
+    expect(before.scale).toBeCloseTo(1.05, 10);
     expect(before.element).toBe('DIV#anchor-marker');
 
     const shotBefore = await page.screenshot();
@@ -112,7 +114,7 @@ test.describe('03 — scale model and zoom inputs', () => {
     // Four notches of Shift+wheel zoom-in anchored under the cursor.
     await gestureWheel(page, cx, cy, -100, 4, { shiftKey: true });
 
-    const expectedScale = 1.05 ** 4;
+    const expectedScale = 1.05 ** 5;
     const after = await page.evaluate(({ cx, cy }) => {
       const html = document.documentElement;
       const el = document.elementFromPoint(cx, cy);
@@ -134,10 +136,12 @@ test.describe('03 — scale model and zoom inputs', () => {
     expect(Math.abs(after.px - before.px)).toBeLessThan(1.5);
     expect(Math.abs(after.py - before.py)).toBeLessThan(1.5);
     // The scroll area was really compensated, not left at its old position.
-    expect(after.scrollLeft).toBeGreaterThan(100);
-    expect(after.scrollLeft).toBeLessThan(120);
-    expect(after.scrollTop).toBeGreaterThan(70);
-    expect(after.scrollTop).toBeLessThan(90);
+    // 5 notches total (1 to create wrapper + 4 more) from scale 1 -> 1.05^5:
+    // scrollLeft = 512 * (1.05^5 - 1) ≈ 141.4
+    expect(after.scrollLeft).toBeGreaterThan(130);
+    expect(after.scrollLeft).toBeLessThan(155);
+    expect(after.scrollTop).toBeGreaterThan(95);
+    expect(after.scrollTop).toBeLessThan(120);
 
     // The pixel under the cursor is still the red marker's pixel on screen.
     const shotAfter = await page.screenshot();

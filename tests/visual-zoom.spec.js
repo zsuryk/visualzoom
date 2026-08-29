@@ -175,16 +175,15 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     await page.evaluate(() => vz.setScale(2));
 
     // A non-scrollable element wider than the page's original box, appended
-    // to the wrapped content. The wrapper must not clip it: the scroll area
-    // covers it at original x scale.
+    // to the body. With the body-transform approach, the transform goes
+    // directly on body so the scroll area covers it at original x scale.
     await page.evaluate(() => {
-      const wrapper = document.getElementById('visual-zoom-wrapper');
       const wide = document.createElement('div');
       wide.id = 'fixture-wide';
       wide.style.width = '2000px';
       wide.style.height = '20px';
       wide.style.background = 'rgb(0, 0, 0)';
-      wrapper.appendChild(wide);
+      document.body.appendChild(wide);
     });
 
     const reach = await page.evaluate(() => {
@@ -216,24 +215,20 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     expect(await page.evaluate(() => vz.getScale())).toBe(2);
     expect(
       await page.evaluate(
-        () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
+        () => getComputedStyle(document.body).transform
       )
     ).toBe('matrix(2, 0, 0, 2, 0, 0)');
 
     // Disposing from the non-owning instance restores the page completely.
     await page.evaluate(() => vz2.dispose());
     expect(await page.evaluate(() => document.body.children.length)).toBe(3);
-    expect(
-      await page.evaluate(() => !document.getElementById('visual-zoom-wrapper'))
-    ).toBe(true);
+    expect(await page.evaluate(() => document.body.style.transform)).toBe('');
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('');
     expect(await page.evaluate(() => document.documentElement.style.background)).toBe('');
 
-    // And applying again creates a wrapper at 1x.
+    // And applying again stays in dormant mode (no transform at 1x).
     await page.evaluate(() => vz.apply());
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
-      true
-    );
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
   });
 
   test('@fixture re-applying after navigation does not double-wrap', async ({ page }) => {
@@ -247,10 +242,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz.apply();
     });
 
-    // Wrapper is created at 1x, just listeners.
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
-      true
-    );
+    // Dormant mode: no transform at 1x, just listeners.
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
   });
 
@@ -305,25 +298,25 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     expect(px.bottom).toEqual([233, 233, 236]);
     expect(px.corner).toEqual([233, 233, 236]);
 
-    // Content geometry is untouched: the wrapper keeps the original layout
-    // box and the fixture's own dimensions are unmodified.
+    // Content geometry is untouched: with the body-transform approach, the
+    // transform goes directly on body and children stay in place.
     const geometry = await page.evaluate(() => {
-      const w = document.getElementById('visual-zoom-wrapper');
-      const r = w.getBoundingClientRect();
+      const body = document.body;
+      const r = body.getBoundingClientRect();
       return {
-        wrapperLayoutW: w.offsetWidth,
-        wrapperLayoutH: w.offsetHeight,
-        wrapperVisualW: r.width,
-        wrapperVisualH: r.height,
+        bodyLayoutW: body.offsetWidth,
+        bodyLayoutH: body.offsetHeight,
+        bodyVisualW: r.width,
+        bodyVisualH: r.height,
         nav: document.getElementById('fixture-nav').offsetHeight,
         table: document.getElementById('fixture-table').offsetWidth,
         region: document.getElementById('fixture-scroll').offsetWidth,
       };
     });
-    expect(geometry.wrapperLayoutW).toBe(1024);
-    expect(geometry.wrapperLayoutH).toBe(768);
-    expect(geometry.wrapperVisualW).toBe(512);
-    expect(geometry.wrapperVisualH).toBe(384);
+    expect(geometry.bodyLayoutW).toBe(1024);
+    expect(geometry.bodyLayoutH).toBe(768);
+    expect(geometry.bodyVisualW).toBe(512);
+    expect(geometry.bodyVisualH).toBe(384);
     expect(geometry.nav).toBe(52);
     expect(geometry.table).toBe(3200);
     expect(geometry.region).toBe(1024);
@@ -333,8 +326,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     await loadVisualZoom(page);
 
     const children = () => page.evaluate(() => document.body.children.length);
-    // Wrapper is created at 1x.
-    expect(await children()).toBe(1);
+    // Dormant mode: no transform at 1x, body children untouched.
+    expect(await children()).toBe(3);
 
     // Re-applying (a second controller instance) does not double-wrap.
     await page.evaluate(async () => {
@@ -342,28 +335,23 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz2 = mod.createVisualZoom();
       vz2.apply();
     });
-    expect(await children()).toBe(1);
+    expect(await children()).toBe(3);
 
-    // Zooming still works after the double apply.
+    // Zooming applies the transform to body (no wrapper created).
     await page.evaluate(() => vz.setScale(3));
-    expect(await children()).toBe(1);
-    expect(
-      await page.evaluate(
-        () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
-      )
-    ).toBe('matrix(3, 0, 0, 3, 0, 0)');
-
-    // Teardown returns the page to its original structure... (the fixture's
-    // body has three children: the scroll region, the modal, the inline script)
-    await page.evaluate(() => vz.dispose());
     expect(await children()).toBe(3);
     expect(
-      await page.evaluate(() => !document.getElementById('visual-zoom-wrapper'))
-    ).toBe(true);
+      await page.evaluate(() => document.body.style.transform)
+    ).toBe('scale(3)');
 
-    // ...and applying again creates a wrapper at 1x.
+    // Teardown returns the page to its original structure...
+    await page.evaluate(() => vz.dispose());
+    expect(await children()).toBe(3);
+    expect(await page.evaluate(() => document.body.style.transform)).toBe('');
+
+    // ...and applying again stays in dormant mode (no transform at 1x).
     await page.evaluate(() => vz.apply());
-    expect(await children()).toBe(1);
+    expect(await children()).toBe(3);
   });
 
   test('@fixture zoom in then back to 100% restores body children (YouTube autoplay)', async ({
@@ -371,18 +359,15 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
   }) => {
     await loadVisualZoom(page);
 
-    // Zoom in: body children move into the wrapper.
+    // Zoom in: transform goes directly on body, children stay in place.
     await page.evaluate(() => vz.setScale(1.5));
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
-      true
-    );
-    expect(await page.evaluate(() => document.body.children.length)).toBe(1);
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(true);
+    expect(await page.evaluate(() => document.body.style.transform)).toBe('scale(1.5)');
+    expect(await page.evaluate(() => document.body.children.length)).toBe(3);
 
-    // Zoom back to 100%: wrapper is removed, body children are restored.
+    // Zoom back to 100%: transform is removed, body children are still in place.
     await page.evaluate(() => vz.setScale(1));
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
-      true
-    );
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     // The fixture body has 3 children: scroll region, modal backdrop, script.
     expect(await page.evaluate(() => document.body.children.length)).toBe(3);
 
@@ -400,7 +385,7 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     await loadVisualZoom(page);
     await page.evaluate(() => vz.setScale(2));
 
-    // Reset via hotkey (Shift+0) returns to 100% and unwraps.
+    // Reset via hotkey (Shift+0) returns to 100% and removes the transform.
     await page.evaluate(() => {
       window.dispatchEvent(
         new KeyboardEvent('keydown', {
@@ -411,9 +396,7 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
         })
       );
     });
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
-      true
-    );
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => document.body.children.length)).toBe(3);
   });
 });

@@ -5,7 +5,6 @@ import { chromiumLaunchOptions, PORT } from './helpers/browser-env.js';
 const EXTENSION_PATH = fileURLToPath(new URL('../extension/', import.meta.url));
 const BASE = `http://127.0.0.1:${PORT}`;
 const FIXTURE = `${BASE}/fixtures/native-zoom-breaking.html`;
-const WRAPPER = '#visual-zoom-wrapper';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -35,7 +34,11 @@ async function launchExtension() {
 async function openFixture(page, url = FIXTURE) {
   await page.goto(url);
   await page.waitForLoadState('load');
-  await expect(page.locator(WRAPPER)).toHaveCount(1);
+  // Dormant mode: no transform at 1x.
+  await expect(async () => {
+    const transform = await page.evaluate(() => document.body.style.transform);
+    expect(transform).toBe('');
+  }).toPass();
 }
 
 // Two Shift+wheel notches (~1.1025x) on the open page — enough to distinguish

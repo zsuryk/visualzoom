@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 
 const FIXTURE = '/fixtures/native-zoom-breaking.html';
-const WRAPPER = '#visual-zoom-wrapper';
 
 async function loadVisualZoom(page, options = {}) {
   await page.goto(FIXTURE);
@@ -21,8 +20,8 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
   }) => {
     await loadVisualZoom(page);
 
-    // Baseline: live transform at 1x, original layout geometry.
-    await expect(page.locator(WRAPPER)).toHaveCount(1);
+    // Baseline: dormant mode at 1x, no transform.
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await scrollLayoutWidth(page)).toBe(1024);
 
     // Zoom in with the live transform: layout geometry is untouched (only the
@@ -33,10 +32,10 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
       await page.evaluate(() => document.documentElement.style.zoom)
     ).toBe('');
 
-    // Enable crisp text: the wrapper is torn down and the page reflows at the
-    // settled scale (CSS zoom on the root), so the layout box itself changes.
+    // Enable crisp text: the body transform is torn down and the page reflows
+    // at the settled scale (CSS zoom on the root), so the layout box changes.
     await page.evaluate(() => vz.setCrispText(true));
-    await expect(page.locator(WRAPPER)).toHaveCount(0);
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.5, 10);
     expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => vz.isEngaged())).toBe(true);
@@ -59,25 +58,23 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
     // Disable crisp text: back to the live transform at the same scale, with
     // the original layout box and no residual reflow zoom.
     await page.evaluate(() => vz.setCrispText(false));
-    await expect(page.locator(WRAPPER)).toHaveCount(1);
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(true);
     expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.575, 10);
     expect(
-      await page.evaluate(
-        () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
-      )
-    ).toBe('matrix(1.575, 0, 0, 1.575, 0, 0)');
+      await page.evaluate(() => document.body.style.transform)
+    ).toBe('scale(1.575)');
     expect(
       await page.evaluate(() => document.documentElement.style.zoom)
     ).toBe('');
     expect(await scrollLayoutWidth(page)).toBe(1024);
   });
 
-  test('@fixture at scale 1 crisp text is a no-op: no wrapper, no reflow zoom, and the page stays interactive', async ({
+  test('@fixture at scale 1 crisp text is a no-op: no transform, no reflow zoom, and the page stays interactive', async ({
     page,
   }) => {
     await loadVisualZoom(page);
     await page.evaluate(() => vz.setCrispText(true));
-    await expect(page.locator(WRAPPER)).toHaveCount(0);
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
     expect(
       await page.evaluate(() => document.documentElement.style.zoom)
@@ -134,7 +131,7 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
     await page.evaluate(() => vz.dispose());
 
     const state = await page.evaluate(() => ({
-      wrapped: document.getElementById('visual-zoom-wrapper') !== null,
+      wrapped: vz.isWrapped(),
       zoom: document.documentElement.style.zoom,
       scale: vz.getScale(),
       overflow: document.documentElement.style.overflow,
@@ -144,9 +141,9 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
     expect(state.scale).toBe(1);
     expect(state.overflow).toBe('');
 
-    // Re-applying after a crisp teardown engages fresh from 1x.
+    // Re-applying after a crisp teardown enters dormant mode (no transform at 1x).
     await page.evaluate(() => vz.apply());
-    await expect(page.locator(WRAPPER)).toHaveCount(1);
+    expect(await page.evaluate(() => vz.isWrapped())).toBe(false);
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
   });
 });

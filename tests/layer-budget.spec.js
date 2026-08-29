@@ -85,15 +85,15 @@ test.describe('05 — layer budget warning (module)', () => {
     await expect(page.locator(BUDGET_NOTICE)).toHaveCount(0);
 
     // Zooming to the top of the envelope never re-shows the notice, and the
-    // wrapper keeps scaling — the notice is non-blocking by construction.
+    // transform keeps scaling — the notice is non-blocking by construction.
     await page.evaluate(() => vz.setScale(3));
     expect(await page.evaluate(() => vz.getScale())).toBe(3);
     await expect(page.locator(BUDGET_NOTICE)).toHaveCount(0);
     expect(
       await page.evaluate(
-        () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
+        () => document.body.style.transform
       )
-    ).toBe('matrix(3, 0, 0, 3, 0, 0)');
+    ).toBe('scale(3)');
 
     // Zooming back out stays equally unobstructed.
     await page.evaluate(() => vz.reset());

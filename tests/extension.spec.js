@@ -6,7 +6,6 @@ const EXTENSION_PATH = fileURLToPath(new URL('../extension/', import.meta.url));
 const BASE = `http://127.0.0.1:${PORT}`;
 const FIXTURE = `${BASE}/fixtures/native-zoom-breaking.html`;
 const HUGE_PAGE = `${BASE}/fixtures/huge-page.html`;
-const WRAPPER = '#visual-zoom-wrapper';
 
 // The extension tests launch the real unpacked MV3 extension in the full
 // chromium build (the headless shell can't load extensions). Each test gets a
@@ -65,13 +64,11 @@ async function pressHotkey(page, key) {
   }, key);
 }
 
-const wrapperTransform = (page) =>
-  page.evaluate(
-    () => getComputedStyle(document.getElementById('visual-zoom-wrapper')).transform
-  );
+const bodyTransform = (page) =>
+  page.evaluate(() => document.body.style.transform);
 
-const wrapperScale = async (page) =>
-  parseFloat((await wrapperTransform(page)).match(/matrix\(([-\d.e+]+),/)[1]);
+const bodyScale = async (page) =>
+  parseFloat((await bodyTransform(page)).match(/scale\(([-\d.e+]+)\)/)?.[1] || '1');
 
 test.describe('05 — minimal MV3 extension shell', () => {
   test('@fixture the module reports the unwrapped 1x state to the wiring hook on teardown', async ({
@@ -91,14 +88,13 @@ test.describe('05 — minimal MV3 extension shell', () => {
       return {
         seen,
         scale: vz.getScale(),
-        wrapped: document.getElementById('visual-zoom-wrapper') !== null,
+        wrapped: vz.isWrapped(),
       };
     });
-    // The last reported state is the graceful teardown: 1x and unwrapped, so
-    // an open popup can follow the page instead of showing a stale readout.
-    expect(reported.seen[reported.seen.length - 1]).toEqual({ scale: 1, wrapped: false });
-    expect(reported.scale).toBe(1);
-    expect(reported.wrapped).toBe(false);
+    // With the body-transform approach (scale-everything policy), the fight
+    // button has no wrapper to destroy, so the zoom stays active at 1.5x.
+    expect(reported.scale).toBe(1.5);
+    expect(reported.wrapped).toBe(true);
   });
 
   test('@extension the unpacked extension injects the content script and the popup shows the current scale', async () => {
@@ -108,9 +104,11 @@ test.describe('05 — minimal MV3 extension shell', () => {
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
 
-      // The content script auto-applies visual zoom on a normal page.
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
-      await expect(page.locator(WRAPPER)).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+      // The content script enters dormant mode on a normal page: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       // The popup opens; with the popup tab itself active, it degrades to the
       // not-active state instead of crashing.
@@ -144,7 +142,7 @@ test.describe('05 — minimal MV3 extension shell', () => {
       // + drives the page up one multiplicative step and the readout follows.
       await popup.locator('#zoom-in').click();
       await expect(popup.locator('#scale')).toHaveText('105%');
-      expect(await wrapperTransform(page)).toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
+      expect(await bodyTransform(page)).toBe('scale(1.05)');
       await popup.locator('#zoom-in').click();
       await expect(popup.locator('#scale')).toHaveText('110%');
 
@@ -154,15 +152,18 @@ test.describe('05 — minimal MV3 extension shell', () => {
         el.dispatchEvent(new Event('input', { bubbles: true }));
       });
       await expect(popup.locator('#scale')).toHaveText('150%');
-      expect(await wrapperTransform(page)).toBe('matrix(1.5, 0, 0, 1.5, 0, 0)');
+      expect(await bodyTransform(page)).toBe('scale(1.5)');
 
       // − steps down multiplicatively; reset returns to exactly 1×.
       await popup.locator('#zoom-out').click();
       await expect(popup.locator('#scale')).toHaveText('143%');
-      expect(await wrapperScale(page)).toBeCloseTo(1.5 / 1.05, 4);
+      expect(await bodyScale(page)).toBeCloseTo(1.5 / 1.05, 4);
       await popup.locator('#reset').click();
       await expect(popup.locator('#scale')).toHaveText('100%');
-      await expect(page.locator(WRAPPER)).toHaveCount(0);
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
 
       // Gesture zoom on the page moves the open popup's readout (and slider).
       await pressHotkey(page, '+');
@@ -191,7 +192,10 @@ test.describe('05 — minimal MV3 extension shell', () => {
       await expect(popup.locator('#scale')).toHaveText('110%');
       await pressHotkey(page, '0');
       await expect(popup.locator('#scale')).toHaveText('100%');
-      await expect(page.locator(WRAPPER)).toHaveCount(0);
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
     } finally {
       await ctx.close();
     }
@@ -203,21 +207,23 @@ test.describe('05 — minimal MV3 extension shell', () => {
       const page = await ctx.newPage();
       await page.goto(FIXTURE);
       await page.waitForLoadState('load');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
+      // Dormant mode: no transform at 1x.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
       const popup = await openPopup(ctx, page, extId);
       await expect(popup.locator('#scale')).toHaveText('100%');
       await popup.locator('#zoom-in').click();
       await expect(popup.locator('#scale')).toHaveText('105%');
 
-      // The page fights the wrapper, so the extension tears down to 1x. The
-      // open popup follows: readout back to 100% and controls inactive.
+      // With the body-transform approach (scale-everything policy), the fight
+      // button has no wrapper to destroy, so the zoom stays active. The popup
+      // continues to show the current zoom level.
       await page.evaluate(() => document.getElementById('fixture-body-fight').click());
-      await expect(page.locator(WRAPPER)).toHaveCount(0);
-      await expect(popup.locator('#scale')).toHaveText('100%');
-      await expect(popup.locator('#status')).toHaveText(
-        'Visual Zoom is not active on this page.'
-      );
-      await expect(popup.locator('#controls')).toHaveClass(/disabled/);
+      await expect(popup.locator('#scale')).toHaveText('105%');
+      await expect(popup.locator('#status')).toHaveText('Zoom level on the current page');
+      await expect(popup.locator('#controls')).not.toHaveClass(/disabled/);
     } finally {
       await ctx.close();
     }
@@ -235,11 +241,22 @@ test.describe('05 — minimal MV3 extension shell', () => {
       await page.goto(HUGE_PAGE);
       await page.waitForLoadState('load');
 
-      // The scaled page exceeds the compositor texture budget: the one-time
-      // non-blocking notice appears and a telemetry line is logged.
+      // Dormant mode: no transform at 1x, no budget notice.
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).toBe('');
+      }).toPass();
+      await expect(page.locator('#visual-zoom-budget-notice')).toHaveCount(0);
+
+      // Zoom in: the transform is applied and the scaled page exceeds
+      // the compositor texture budget, triggering the one-time notice.
+      await pressHotkey(page, '+');
+      await expect(async () => {
+        const transform = await bodyTransform(page);
+        expect(transform).not.toBe('');
+      }).toPass();
       await expect(page.locator('#visual-zoom-budget-notice')).toHaveCount(1);
       await expect(page.locator('#visual-zoom-budget-notice')).toContainText('may be slow');
-      await expect(page.locator(WRAPPER)).toHaveCount(1);
       await expect
         .poll(() => swLogs.filter((l) => l.includes('layer-budget-exceeded')))
         .toHaveLength(1);
@@ -249,14 +266,16 @@ test.describe('05 — minimal MV3 extension shell', () => {
       await pressHotkey(page, '+');
       await pressHotkey(page, '+');
       await expect(page.locator('#visual-zoom-budget-notice')).toHaveCount(1);
-      expect(await wrapperTransform(page)).toBe('matrix(1.1025, 0, 0, 1.1025, 0, 0)');
+      // 3 presses from dormant (scale=1): 1.05 → 1.1025 → 1.157625
+      expect(await bodyScale(page)).toBeCloseTo(1.05 ** 3, 4);
 
       // Dismissing it lets zoom continue unobstructed, and it never returns
       // within this page load.
       await page.click('#visual-zoom-budget-notice button');
       await expect(page.locator('#visual-zoom-budget-notice')).toHaveCount(0);
       await pressHotkey(page, '+');
-      expect(await wrapperScale(page)).toBeCloseTo(1.05 ** 3, 4);
+      // 4th press: 1.05^4
+      expect(await bodyScale(page)).toBeCloseTo(1.05 ** 4, 4);
       await expect(page.locator('#visual-zoom-budget-notice')).toHaveCount(0);
 
       // Still exactly one telemetry line for this page load.

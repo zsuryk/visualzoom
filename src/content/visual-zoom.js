@@ -106,6 +106,11 @@ let origHeight = 0;
 let pageBackground = '';
 let savedStyles = null;
 let listenersAttached = false;
+// Whether the body-transform approach is active: transform: scale() is applied
+// directly to document.body instead of wrapping children in a div. This avoids
+// childList mutations on body that break sites observing body for DOM changes
+// (e.g. YouTube thumbnail hover autoplay).
+let bodyScaled = false;
 
 // Fixed-element policy state: the active mode and the elements currently
 // lifted out of the scaled wrapper into the unscaled fixed layer (ticket 07).
@@ -163,6 +168,9 @@ function captureBackground() {
 }
 
 function getWrapper() {
+  if (bodyScaled) {
+    return document.body;
+  }
   return document.getElementById(WRAPPER_ID);
 }
 
@@ -331,6 +339,11 @@ function restoreStylesAndState() {
   }
   savedStyles = null;
   document.documentElement.style.zoom = '';
+  document.body.style.transform = '';
+  document.body.style.transformOrigin = '';
+  document.body.style.width = '';
+  document.body.style.height = '';
+  bodyScaled = false;
   crispText = false;
   scale = 1;
   origWidth = 0;
@@ -346,9 +359,12 @@ function moveChildren(from, to) {
   }
 }
 
-// Move the page's children into a fresh wrapper at targetScale. The original
-// inline styles are captured once and kept across re-applies, so a later
-// teardown restores the page's true original styles, not the ones we set.
+// Apply the scale transform to the page. For 'scale-everything' policy, the
+// transform goes directly on document.body — no child elements are moved, so
+// body's childList never mutates. This prevents sites that observe body
+// (YouTube, SPAs) from reinitialising and losing event bindings (hover
+// autoplay, etc.). For fixed-element policies that need to lift protected
+// elements, the original wrapper approach is used.
 function wrapBody(targetScale) {
   const body = document.body;
   const html = document.documentElement;
@@ -364,47 +380,69 @@ function wrapBody(targetScale) {
     };
   }
 
-  const el = document.createElement('div');
-  el.id = WRAPPER_ID;
-
-  moveChildren(body, el);
-  body.appendChild(el);
-
   origWidth = html.scrollWidth;
   origHeight = html.scrollHeight;
   pageBackground = captureBackground();
 
-  el.style.position = 'absolute';
-  el.style.top = '0';
-  el.style.left = '0';
-  el.style.width = `${origWidth}px`;
-  el.style.height = `${origHeight}px`;
-  el.style.transformOrigin = '0 0';
-  body.style.overflow = 'visible';
+  if (fixedPolicy === 'scale-everything') {
+    bodyScaled = true;
+    body.style.transformOrigin = '0 0';
+    body.style.width = `${origWidth}px`;
+    body.style.height = `${origHeight}px`;
+    body.style.overflow = 'visible';
+    attachListeners();
+    scale = clampScale(targetScale, effectiveMinScale());
+    applyLayout(scale, body);
+  } else {
+    const el = document.createElement('div');
+    el.id = WRAPPER_ID;
+    moveChildren(body, el);
+    body.appendChild(el);
 
-  attachListeners();
-  scale = clampScale(targetScale, effectiveMinScale());
-  applyLayout(scale, el);
+    el.style.position = 'absolute';
+    el.style.top = '0';
+    el.style.left = '0';
+    el.style.width = `${origWidth}px`;
+    el.style.height = `${origHeight}px`;
+    el.style.transformOrigin = '0 0';
+    body.style.overflow = 'visible';
+
+    attachListeners();
+    scale = clampScale(targetScale, effectiveMinScale());
+    applyLayout(scale, el);
+    syncPolicy();
+  }
   checkLayerBudget();
-  syncPolicy();
   notifyScale();
 }
 
-// Move the page's children back to body, undo the styles, and stop watching
-// the DOM. Idempotent whether or not a wrapper is currently present.
+// Restore the original DOM. Idempotent whether the body-transform or wrapper
+// approach is currently active.
 function unwrap() {
-  const active = getWrapper();
-  // Restore lifted elements to their original spots inside the wrapper BEFORE
-  // the children are moved back to body, so the page regains its exact DOM.
   clearProtected();
   stopFixedObserver();
-  if (active) {
-    moveChildren(active, document.body);
-    active.remove();
+  // Stop the body observer BEFORE DOM mutations: moveChildren and
+  // active.remove() mutate body's childList, which would fire onBodyMutation
+  // and trigger reapplyAfterLoss(), recreating the wrapper we just destroyed.
+  stopObserving();
+  if (bodyScaled) {
+    // Body-transform approach: just remove the inline styles.
+    // No children were moved, so no childList mutation fires — the whole
+    // point of this approach.
+    document.body.style.transform = '';
+    document.body.style.transformOrigin = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
+    bodyScaled = false;
+  } else {
+    const active = getWrapper();
+    if (active) {
+      moveChildren(active, document.body);
+      active.remove();
+    }
   }
   removeBudgetNotice();
   restoreStylesAndState();
-  stopObserving();
   detachListeners();
   notifyScale();
 }
@@ -436,13 +474,29 @@ function setCrispText(enabled) {
   notifyScale();
 }
 
-// Tear the wrapper down but keep the settled scale and the captured original
+// Tear the zoom down but keep the settled scale and the captured original
 // styles, so the crisp reflow can take over and a later re-wrap reuses the
 // page's true originals.
 function removeWrapperKeepZoom() {
-  const active = getWrapper();
   clearProtected();
   stopFixedObserver();
+  if (bodyScaled) {
+    document.body.style.transform = '';
+    document.body.style.transformOrigin = '';
+    document.body.style.width = '';
+    document.body.style.height = '';
+    bodyScaled = false;
+    removeBudgetNotice();
+    if (savedStyles) {
+      const html = document.documentElement;
+      const body = document.body;
+      html.style.overflow = savedStyles.html.overflow;
+      html.style.background = savedStyles.html.background;
+      body.style.overflow = savedStyles.body.overflow;
+    }
+    return;
+  }
+  const active = getWrapper();
   if (!active) {
     return;
   }
@@ -900,6 +954,15 @@ export function createVisualZoom({
       applyScale(initialScale);
       return;
     }
+    // Dormant mode: no zoom needed, skip DOM surgery entirely.
+    // Listeners are attached so a future gesture can wrap on demand.
+    // This prevents breaking sites that expect direct body children
+    // (e.g. YouTube thumbnail hover autoplay).
+    if (initialScale === 1 && !zoomBelow100 && !getWrapper()) {
+      attachListeners();
+      notifyScale();
+      return;
+    }
     startObserving();
     const existing = getWrapper();
     if (existing) {
@@ -941,9 +1004,29 @@ export function createVisualZoom({
     if (!POLICIES.includes(nextPolicy) || nextPolicy === fixedPolicy) {
       return;
     }
+    const wasZoomed = scale !== 1;
     fixedPolicy = nextPolicy;
-    if (getWrapper()) {
-      syncPolicy();
+    if (wasZoomed) {
+      // Re-apply the zoom with the new policy: this handles transitions
+      // between body-transform and wrapper approaches.
+      const currentScale = scale;
+      unwrap();
+      if (nextPolicy === 'scale-everything') {
+        // Switching to body-transform: apply directly.
+        bodyScaled = true;
+        const body = document.body;
+        body.style.transformOrigin = '0 0';
+        body.style.width = `${origWidth}px`;
+        body.style.height = `${origHeight}px`;
+        body.style.overflow = 'visible';
+        attachListeners();
+        scale = clampScale(currentScale, effectiveMinScale());
+        applyLayout(scale, body);
+      } else {
+        // Switching to wrapper approach: re-wrap.
+        startObserving();
+        wrapBody(currentScale);
+      }
     }
   }
 
