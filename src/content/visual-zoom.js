@@ -198,6 +198,12 @@ function notifyScale() {
 
 function applyScale(nextScale) {
   scale = clampScale(nextScale, effectiveMinScale());
+  // Snap near-1.0 fractional scales to exactly 1 so the unwrap path fires.
+  // Wheel gestures multiply by Math.pow(STEP_FACTOR, notch) which can land
+  // on 1.0000000001 or 0.9999999998 due to floating-point rounding.
+  if (scale !== 1 && Math.abs(scale - 1) < 1e-3) {
+    scale = 1;
+  }
   const active = getWrapper();
   if (active) {
       if (scale === 1 && !crispText) {
