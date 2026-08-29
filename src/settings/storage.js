@@ -1,7 +1,7 @@
 // chrome.storage adapter for the settings layer. Only the extension surfaces
 // (content script, popup, options page) import this; the pure settings core
 // (store.js) stays chrome-free so the fixture/unit tests can import it.
-import { sanitizeSettings, SETTINGS_KEY } from './store.js';
+import { sanitizeSettings, SETTINGS_KEY, DEFAULT_SETTINGS } from './store.js';
 
 export async function loadSettings() {
   const raw = await chrome.storage.sync.get(SETTINGS_KEY);
@@ -57,4 +57,43 @@ export function subscribeSettings(cb) {
   };
   chrome.storage.onChanged.addListener(handler);
   return () => chrome.storage.onChanged.removeListener(handler);
+}
+
+// Reset all settings to their defaults, preserving per-site zoom memory.
+export async function resetSettings() {
+  const current = await loadSettings();
+  // Preserve remembered zoom scales so the user doesn't lose their positions.
+  const sites = {};
+  for (const [hostname, site] of Object.entries(current.sites || {})) {
+    if (typeof site.scale === 'number' && Number.isFinite(site.scale)) {
+      sites[hostname] = { scale: site.scale };
+    }
+  }
+  const next = sanitizeSettings({ ...DEFAULT_SETTINGS, sites });
+  await chrome.storage.sync.set({ [SETTINGS_KEY]: next });
+  return next;
+}
+
+// Clear all remembered zoom scales from per-site settings.
+export async function clearZoomMemory() {
+  return saveSettings((settings) => {
+    const sites = {};
+    for (const [hostname, site] of Object.entries(settings.sites)) {
+      const { scale, ...rest } = site;
+      if (Object.keys(rest).length > 0) {
+        sites[hostname] = rest;
+      }
+    }
+    return { ...settings, sites };
+  });
+}
+
+// Clear all per-site overrides, restoring global defaults.
+export async function clearSiteSettings() {
+  return saveSettings((settings) => ({ ...settings, sites: {} }));
+}
+
+// Clear all data by removing the settings key from storage.
+export async function clearAllData() {
+  await chrome.storage.sync.remove(SETTINGS_KEY);
 }

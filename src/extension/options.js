@@ -14,6 +14,10 @@ import {
   updateSite,
   removeSite,
   subscribeSettings,
+  resetSettings,
+  clearZoomMemory,
+  clearSiteSettings,
+  clearAllData,
 } from '../settings/storage.js';
 import { siteSettings, hostnameFor } from '../settings/store.js';
 
@@ -53,6 +57,11 @@ const addHost = document.getElementById('add-host');
 const addSite = document.getElementById('add-site');
 const siteList = document.getElementById('site-list');
 const saved = document.getElementById('saved');
+const themeSelect = document.getElementById('theme');
+const resetBtn = document.getElementById('reset-settings');
+const clearZoomMemBtn = document.getElementById('clear-zoom-memory');
+const clearSiteBtn = document.getElementById('clear-site-settings');
+const clearAllBtn = document.getElementById('clear-all-data');
 
 let settings = null;
 
@@ -85,7 +94,22 @@ function render() {
   memoryDefault.checked = settings.memoryDefault;
   zoomBelow100.checked = settings.zoomBelow100;
   fixedPolicy.value = settings.fixedElementPolicy;
+  themeSelect.value = settings.theme;
+  applyTheme(settings.theme);
   renderSites();
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'dark') {
+    root.dataset.theme = 'dark';
+  } else if (theme === 'light') {
+    root.dataset.theme = 'light';
+  } else {
+    // Device: respect OS preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = prefersDark ? 'dark' : 'light';
+  }
 }
 
 function siteRowControls(classSuffix, label, checked) {
@@ -211,6 +235,50 @@ fixedPolicy.addEventListener('change', () => {
   saveSettings({ fixedElementPolicy: fixedPolicy.value }).then(showSaved);
 });
 
+themeSelect.addEventListener('change', () => {
+  saveSettings({ theme: themeSelect.value }).then(() => {
+    applyTheme(themeSelect.value);
+    showSaved();
+  });
+});
+
+resetBtn.addEventListener('click', async () => {
+  if (!confirm('Reset all settings to default? Remembered zoom levels are kept.')) {
+    return;
+  }
+  settings = await resetSettings();
+  render();
+  showSaved();
+});
+
+clearZoomMemBtn.addEventListener('click', async () => {
+  if (!confirm('Delete all remembered zoom levels?')) {
+    return;
+  }
+  settings = await clearZoomMemory();
+  renderSites();
+  showSaved();
+});
+
+clearSiteBtn.addEventListener('click', async () => {
+  if (!confirm('Delete all per-site settings?')) {
+    return;
+  }
+  settings = await clearSiteSettings();
+  renderSites();
+  showSaved();
+});
+
+clearAllBtn.addEventListener('click', async () => {
+  if (!confirm('Delete ALL saved data? This cannot be undone.')) {
+    return;
+  }
+  await clearAllData();
+  settings = await loadSettings();
+  render();
+  showSaved();
+});
+
 addSite.addEventListener('click', () => {
   const hostname = hostnameFor(addHost.value.trim());
   addHost.value = '';
@@ -230,6 +298,13 @@ addHost.addEventListener('keydown', (event) => {
 subscribeSettings((next) => {
   settings = next;
   renderSites();
+});
+
+// When the OS preference changes and the user is on "Device" theme, re-apply.
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (settings && settings.theme === 'device') {
+    applyTheme('device');
+  }
 });
 
 (async () => {

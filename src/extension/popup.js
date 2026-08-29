@@ -23,6 +23,18 @@ const formatScale = (scale) => `${Math.round(scale * 100)}%`;
 
 const current = { hostname: null, settings: null, site: null };
 
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'dark') {
+    root.dataset.theme = 'dark';
+  } else if (theme === 'light') {
+    root.dataset.theme = 'light';
+  } else {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = prefersDark ? 'dark' : 'light';
+  }
+}
+
 // The slider's floor follows the zoom-below-100 setting: 100% when off,
 // 30% when on, so the slider never offers a range the page would clamp away.
 function syncSliderMin() {
@@ -68,6 +80,7 @@ function requestState() {
     current.hostname = resp.hostname;
     current.settings = await loadSettings();
     current.site = siteSettings(current.settings, current.hostname);
+    applyTheme(current.settings.theme);
     syncSliderMin();
     renderSite();
   });
@@ -114,6 +127,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 // this popup never shows a stale per-site state.
 subscribeSettings((next) => {
   current.settings = next;
+  applyTheme(next.theme);
   syncSliderMin();
   if (!current.hostname) {
     return;
@@ -123,3 +137,10 @@ subscribeSettings((next) => {
 });
 
 requestState();
+
+// When the OS preference changes and the user is on "Device" theme, re-apply.
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (current.settings && current.settings.theme === 'device') {
+    applyTheme('device');
+  }
+});

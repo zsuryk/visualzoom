@@ -50,6 +50,20 @@
     </section>
 
     <section class="card">
+      <h2>Appearance</h2>
+      <div class="row">
+        <label for="theme">Theme</label>
+        <select id="theme">
+          <option value="device">Device</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+        <p class="hint">Choose how the extension UI looks. "Device" follows your
+        operating system's dark/light preference.</p>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Defaults</h2>
       <div class="row">
         <label class="check">
@@ -90,6 +104,34 @@
       page at the settled scale so text renders crisply, trading layout fidelity for
       sharpness — never on by default.</p>
       <div id="site-list" class="site-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>Reset settings</h2>
+      <div class="row">
+        <button id="reset-settings" type="button" class="btn">Reset all settings to default</button>
+        <p class="hint">Restores every option (gesture modifier, hotkeys, policy,
+        theme) to its default. Remembered zoom levels are kept.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Delete saved data</h2>
+      <div class="row">
+        <button id="clear-zoom-memory" type="button" class="btn btn-secondary">Delete all remembered zoom levels</button>
+        <p class="hint">Removes saved zoom positions for all sites. Settings and
+        per-site toggles are kept.</p>
+      </div>
+      <div class="row">
+        <button id="clear-site-settings" type="button" class="btn btn-secondary">Delete all per-site settings</button>
+        <p class="hint">Removes every per-site override (enabled, memory, crisp
+        text, policy, zoom). Global settings are kept.</p>
+      </div>
+      <div class="row">
+        <button id="clear-all-data" type="button" class="btn btn-danger">Delete all data</button>
+        <p class="hint">Clears everything: settings, per-site overrides, and
+        remembered zoom levels. The extension resets to a fresh install.</p>
+      </div>
     </section>
   </main>
   <script src="options.js"></script>

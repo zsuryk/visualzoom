@@ -8,6 +8,10 @@
 // KeyboardEvent property names so a configuration maps 1:1 onto events.
 export const MODIFIERS = ['altKey', 'ctrlKey', 'shiftKey', 'metaKey'];
 
+// Theme options: 'device' follows the OS preference, 'dark' and 'light' force
+// a specific scheme.
+export const THEMES = ['device', 'dark', 'light'];
+
 // The fixed-element policy modes. The *stored default* lives here; the
 // behavior behind each mode is ticket 07's scope.
 export const POLICIES = ['scale-everything', 'protect-modals', 'protect-sticky-too'];
@@ -40,6 +44,9 @@ export const DEFAULT_SETTINGS = {
   zoomBelow100: false,
   // Global default for the fixed-element policy (ticket 07 consumes it).
   fixedElementPolicy: 'scale-everything',
+  // Theme for the extension UI: 'device' follows the OS preference, 'dark'
+  // and 'light' force a specific scheme.
+  theme: 'device',
   // Per-site overrides indexed by hostname.
   sites: {},
 };
@@ -140,6 +147,7 @@ export function sanitizeSettings(input) {
     fixedElementPolicy: POLICIES.includes(raw.fixedElementPolicy)
       ? raw.fixedElementPolicy
       : DEFAULT_SETTINGS.fixedElementPolicy,
+    theme: THEMES.includes(raw.theme) ? raw.theme : DEFAULT_SETTINGS.theme,
     sites,
   };
 }
