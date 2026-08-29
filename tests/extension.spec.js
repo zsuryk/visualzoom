@@ -162,7 +162,7 @@ test.describe('05 — minimal MV3 extension shell', () => {
       expect(await wrapperScale(page)).toBeCloseTo(1.5 / 1.05, 4);
       await popup.locator('#reset').click();
       await expect(popup.locator('#scale')).toHaveText('100%');
-      expect(await wrapperTransform(page)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(page.locator(WRAPPER)).toHaveCount(0);
 
       // Gesture zoom on the page moves the open popup's readout (and slider).
       await pressHotkey(page, '+');
@@ -191,7 +191,7 @@ test.describe('05 — minimal MV3 extension shell', () => {
       await expect(popup.locator('#scale')).toHaveText('110%');
       await pressHotkey(page, '0');
       await expect(popup.locator('#scale')).toHaveText('100%');
-      expect(await wrapperTransform(page)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(page.locator(WRAPPER)).toHaveCount(0);
     } finally {
       await ctx.close();
     }

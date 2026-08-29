@@ -200,12 +200,13 @@ function applyScale(nextScale) {
   scale = clampScale(nextScale, effectiveMinScale());
   const active = getWrapper();
   if (active) {
-    if (scale === 1 && !crispText) {
-      // Back to 100%: restore the original DOM so sites that expect direct
-      // body children (e.g. YouTube thumbnail autoplay) work again.
-      unwrap();
-      return;
-    }
+      if (scale === 1 && !crispText) {
+        // Back to 100%: restore the original DOM so sites that expect direct
+        // body children (e.g. YouTube thumbnail autoplay) work again.
+        unwrap();
+        attachListeners();
+        return;
+      }
     applyLayout(scale, active);
     checkLayerBudget();
   } else if (crispText) {
@@ -255,10 +256,10 @@ function onWheel(event) {
   if (!hasZoomModifier(event) || !isEngaged()) {
     return;
   }
-  // Lazy-wrap on first gesture from dormant mode.
-  if (!getWrapper()) {
-    wrapBody(scale);
-  }
+    // Lazy-wrap on first gesture from dormant mode.
+    if (!getWrapper() && !crispText) {
+      wrapBody(scale);
+    }
   event.preventDefault();
   const nextScale = clampScale(
     scale * Math.pow(STEP_FACTOR, notchFromWheel(event)),
@@ -376,8 +377,11 @@ function wrapBody(targetScale) {
   body.style.overflow = 'visible';
 
   attachListeners();
-  applyScale(targetScale);
+  scale = clampScale(targetScale, effectiveMinScale());
+  applyLayout(scale, el);
+  checkLayerBudget();
   syncPolicy();
+  notifyScale();
 }
 
 // Move the page's children back to body, undo the styles, and stop watching
@@ -890,15 +894,12 @@ export function createVisualZoom({
       applyScale(initialScale);
       return;
     }
-    // Dormant mode: no zoom needed, skip DOM surgery entirely.
-    // Listeners are attached so a future gesture can wrap on demand.
-    if (initialScale === 1 && !zoomBelow100) {
-      attachListeners();
-      return;
-    }
     startObserving();
     const existing = getWrapper();
     if (existing) {
+      if (initialScale === 1 && scale === 1) {
+        return;
+      }
       applyScale(initialScale === 1 ? scale : initialScale);
       return;
     }

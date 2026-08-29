@@ -229,9 +229,9 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe('');
     expect(await page.evaluate(() => document.documentElement.style.background)).toBe('');
 
-    // And applying again enters dormant mode (no wrapper at 1x).
+    // And applying again creates a wrapper at 1x.
     await page.evaluate(() => vz.apply());
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
       true
     );
   });
@@ -247,8 +247,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz.apply();
     });
 
-    // Dormant mode: no wrapper at 1x, just listeners.
-    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') === null)).toBe(
+    // Wrapper is created at 1x, just listeners.
+    expect(await page.evaluate(() => document.getElementById('visual-zoom-wrapper') !== null)).toBe(
       true
     );
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
@@ -333,8 +333,8 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
     await loadVisualZoom(page);
 
     const children = () => page.evaluate(() => document.body.children.length);
-    // Dormant mode: no wrapper at 1x.
-    expect(await children()).toBe(3);
+    // Wrapper is created at 1x.
+    expect(await children()).toBe(1);
 
     // Re-applying (a second controller instance) does not double-wrap.
     await page.evaluate(async () => {
@@ -342,7 +342,7 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       globalThis.vz2 = mod.createVisualZoom();
       vz2.apply();
     });
-    expect(await children()).toBe(3);
+    expect(await children()).toBe(1);
 
     // Zooming still works after the double apply.
     await page.evaluate(() => vz.setScale(3));
@@ -361,9 +361,9 @@ test.describe('02 — wrapper, scaled scroll area, letterbox bands', () => {
       await page.evaluate(() => !document.getElementById('visual-zoom-wrapper'))
     ).toBe(true);
 
-    // ...and applying again enters dormant mode (no wrapper at 1x).
+    // ...and applying again creates a wrapper at 1x.
     await page.evaluate(() => vz.apply());
-    expect(await children()).toBe(3);
+    expect(await children()).toBe(1);
   });
 
   test('@fixture zoom in then back to 100% restores body children (YouTube autoplay)', async ({
