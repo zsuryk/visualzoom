@@ -31,6 +31,7 @@ const POLICY_LABELS = {
 };
 
 const modifierSelect = document.getElementById('modifier');
+const altWarning = document.getElementById('alt-warning');
 const memoryDefault = document.getElementById('memory-default');
 const zoomBelow100 = document.getElementById('zoom-below-100');
 const fixedPolicy = document.getElementById('fixed-policy');
@@ -76,6 +77,7 @@ function showSaved() {
 
 function render() {
   fillModifierSelect(modifierSelect, settings.zoomModifier);
+  altWarning.hidden = settings.zoomModifier !== 'altKey';
   for (const slot of HOTKEY_SLOTS) {
     fillModifierSelect(hotkeyRoots[slot].modifier, settings.hotkeys[slot].modifier);
     hotkeyRoots[slot].key.value = settings.hotkeys[slot].key;
@@ -174,6 +176,7 @@ function renderSites() {
 }
 
 modifierSelect.addEventListener('change', () => {
+  altWarning.hidden = modifierSelect.value !== 'altKey';
   saveSettings({ zoomModifier: modifierSelect.value }).then(showSaved);
 });
 

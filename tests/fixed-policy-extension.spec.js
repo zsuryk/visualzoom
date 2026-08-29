@@ -38,7 +38,7 @@ async function openFixture(page, url = FIXTURE) {
   await expect(page.locator(WRAPPER)).toHaveCount(1);
 }
 
-// Two Alt+wheel notches (~1.1025x) on the open page — enough to distinguish
+// Two Shift+wheel notches (~1.1025x) on the open page — enough to distinguish
 // a scaled modal (640 * 1.1025 ~= 706px) from a protected 1x modal (640px).
 async function zoomIn(page) {
   await page.evaluate(() => {
@@ -51,7 +51,7 @@ async function zoomIn(page) {
           clientY: 384,
           bubbles: true,
           cancelable: true,
-          altKey: true,
+          shiftKey: true,
         })
       );
     }

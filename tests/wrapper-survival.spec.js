@@ -19,7 +19,7 @@ async function loadVisualZoom(page) {
   await applyVisualZoom(page);
 }
 
-// Alt+Plus on the main keyboard is Shift+=, which real browsers report as the
+// Shift+Plus on the main keyboard is Shift+=, which real browsers report as the
 // '+' key. Playwright's accelerator cannot produce the shifted character, so
 // the hotkeys are driven as DOM keydown events — the exact event our listener
 // consumes.
@@ -30,7 +30,7 @@ async function pressHotkey(page, key) {
         key,
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       })
     );
   }, key);
@@ -180,14 +180,14 @@ test.describe('04 — wrapper survival and graceful teardown', () => {
         clientY: 384,
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       });
       window.dispatchEvent(wheel);
       const key = new KeyboardEvent('keydown', {
         key: '+',
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       });
       window.dispatchEvent(key);
       return { wheel: wheel.defaultPrevented, key: key.defaultPrevented };

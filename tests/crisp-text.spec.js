@@ -91,7 +91,7 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
           key: '+',
           bubbles: true,
           cancelable: true,
-          altKey: true,
+          shiftKey: true,
         })
       );
     });
@@ -115,7 +115,7 @@ test.describe('06 — crisp-text escape hatch (module)', () => {
           clientY: 384,
           bubbles: true,
           cancelable: true,
-          altKey: true,
+          shiftKey: true,
         })
       );
     });

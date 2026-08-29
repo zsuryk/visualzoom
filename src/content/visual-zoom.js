@@ -71,16 +71,19 @@ const FIXED_LAYER_ID = 'visual-zoom-fixed-layer';
 export const STABILITY_MS = 1000;
 const MAX_REAPPLY_TRIES = 2;
 
-// The key a user holds while scrolling to gesture-zoom. Defaults to Alt, the
-// key native browser zoom doesn't claim, so visual zoom and native reflow
-// zoom coexist. Persisted settings (ticket 06) feed the live value in through
-// createVisualZoom's modifier option / setInputs().
-export const DEFAULT_MODIFIER = 'altKey';
+// The key a user holds while scrolling to gesture-zoom. Defaults to Shift:
+// Alt is avoided because Firefox intercepts Alt+scroll at the chrome level
+// (mousewheel.with_alt.action=2, history navigation) and never delivers the
+// wheel event to page JS. Shift+scroll (action=4, horizontal scroll) still
+// fires wheel events, so the extension can intercept them. Persisted
+// settings (ticket 06) feed the live value in through createVisualZoom's
+// modifier option / setInputs().
+export const DEFAULT_MODIFIER = 'shiftKey';
 
 export const DEFAULT_HOTKEYS = {
-  zoomIn: { modifier: 'altKey', key: '+' },
-  zoomOut: { modifier: 'altKey', key: '-' },
-  reset: { modifier: 'altKey', key: '0' },
+  zoomIn: { modifier: 'shiftKey', key: '+' },
+  zoomOut: { modifier: 'shiftKey', key: '-' },
+  reset: { modifier: 'shiftKey', key: '0' },
 };
 
 // Rough pixel advance of one wheel notch; each notch steps the scale
@@ -250,6 +253,7 @@ function onWheel(event) {
   if (!getWrapper()) {
     wrapBody(scale);
   }
+  event.preventDefault();
   const nextScale = clampScale(
     scale * Math.pow(STEP_FACTOR, notchFromWheel(event)),
     effectiveMinScale()
@@ -257,7 +261,6 @@ function onWheel(event) {
   if (nextScale === scale) {
     return;
   }
-  event.preventDefault();
   // In reflow mode there is no scaled scroll area to compensate: the browser
   // reflows layout around the origin, so the cursor anchor is not claimed.
   if (crispText) {

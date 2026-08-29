@@ -17,15 +17,19 @@ export const POLICIES = ['scale-everything', 'protect-modals', 'protect-sticky-t
 export const HOTKEY_SLOTS = ['zoomIn', 'zoomOut', 'reset'];
 
 export const DEFAULT_HOTKEYS = {
-  zoomIn: { modifier: 'altKey', key: '+' },
-  zoomOut: { modifier: 'altKey', key: '-' },
-  reset: { modifier: 'altKey', key: '0' },
+  zoomIn: { modifier: 'shiftKey', key: '+' },
+  zoomOut: { modifier: 'shiftKey', key: '-' },
+  reset: { modifier: 'shiftKey', key: '0' },
 };
 
 export const DEFAULT_SETTINGS = {
-  // Gesture zoom modifier: Alt by default, the key native browser zoom
-  // doesn't claim, so visual zoom and native reflow zoom coexist.
-  zoomModifier: 'altKey',
+  // Gesture zoom modifier: Shift by default. Alt is avoided because Firefox
+  // intercepts Alt+scroll at the chrome level (mousewheel.with_alt.action=2
+  // defaults to history navigation) and never delivers the wheel event to
+  // page JavaScript, making gesture zoom impossible without an about:config
+  // tweak. Shift+scroll (action=4, horizontal scroll) still fires wheel
+  // events, so the extension can intercept and preventDefault() them.
+  zoomModifier: 'shiftKey',
   hotkeys: DEFAULT_HOTKEYS,
   // Per-site zoom memory default: off. Zoom is only ever restored on revisit
   // after an explicit per-site opt-in.

@@ -10,7 +10,7 @@ Users want to zoom into detail (or out for overview) on these complex pages *wit
 
 ## Solution
 
-Visual Zoom is a browser extension (Chrome + Firefox, Manifest V3) that scales the page's rendered output live, keeping the layout untouched. It wraps the page content in a container, applies `transform: scale()`, and fakes a scaled scroll area so native scrolling still reaches the zoomed-in overflow. A configurable modifier (default Alt) + scrollwheel performs cursor-anchored zoom; Alt+Plus/Minus/0 handle keyboard zoom, in, out and reset; a popup provides a slider, +/−/reset and per-site toggles; an options page holds the global settings.
+Visual Zoom is a browser extension (Chrome + Firefox, Manifest V3) that scales the page's rendered output live, keeping the layout untouched. It wraps the page content in a container, applies `transform: scale()`, and fakes a scaled scroll area so native scrolling still reaches the zoomed-in overflow. A configurable modifier (default Shift) + scrollwheel performs cursor-anchored zoom; Shift+Plus/Minus/0 handle keyboard zoom, in, out and reset; a popup provides a slider, +/−/reset and per-site toggles; an options page holds the global settings.
 
 Zooming in accepts blurry text by design — layout fidelity is the product. Zooming out below 1× fills the letterbox bands by stretching only the page background. A per-site opt-in "crisp-text escape hatch" reflows the page when crispness matters more than fidelity. When the page's own scripts destroy the wrapper, the extension re-applies on navigation/cheap body-clears but never fights the framework — it tears down to 1× gracefully and informs the user.
 
@@ -20,7 +20,7 @@ Zooming in accepts blurry text by design — layout fidelity is the product. Zoo
 2. As a user, I want the zoom to be anchored under my cursor, so that the point I'm pointing at stays put while everything scales around it (map-like feel).
 3. As a user, I want to zoom out below 1×, so that I can get an overview of wide dashboards and large layouts.
 4. As a user zoomed out below 1×, I want the letterbox bands to show the page background rather than empty white space, so that zooming out looks intentional.
-5. As a keyboard-only user, I want Alt+Plus/Alt+Minus/Alt+0 for zoom in/out/reset, so that I don't need a mouse or a scrollwheel to zoom.
+5. As a keyboard-only user, I want Shift+Plus/Shift+Minus/Shift+0 for zoom in/out/reset, so that I don't need a mouse or a scrollwheel to zoom.
 6. As a user, I want the zoom modifier to be configurable, so that I can pick a key that doesn't clash with my own shortcuts.
 7. As a user, I want native Ctrl+wheel/Ctrl+Plus zoom to keep working, so that I can still use the browser's own reflow zoom when I want it.
 8. As a user, I want a popup with a slider and +/−/reset, so that I can fine-tune the zoom level and reset without gestures.
@@ -45,8 +45,8 @@ Zooming in accepts blurry text by design — layout fidelity is the product. Zoo
 - **Scaled scroll area**: the wrapper's scaled visual overflow feeds the native scroll area, so native scrolling reaches original dimensions × scale — the zoomed-in overflow. (The layout box is never resized to original × scale: combined with the transform that would double-scale the visuals.) Requires scroll-anchoring math so the viewport doesn't jump during the gesture.
 - **Cursor anchor**: during a gesture, compensate the scaled scroll area's scroll position so the under-cursor pixel never drifts.
 - **Scale model**: range 0.3×–3×; multiplicative steps of ~5% of the current scale per gesture notch (so the change is felt as an even, exponential zoom).
-- **Gesture claim policy**: the extension is aggressive (works on all pages on install) but defaults its modifier to Alt so it never collides with native Ctrl+zoom. Modifier is fully configurable.
-- **Zoom hotkeys**: Alt+Plus / Alt+Minus / Alt+0 for zoom in / out / reset; like the modifier, all configurable through persisted settings.
+- **Gesture claim policy**: the extension is aggressive (works on all pages on install) but defaults its modifier to Shift (Alt is avoided because Firefox intercepts Alt+scroll for history navigation). Modifier is fully configurable.
+- **Zoom hotkeys**: Shift+Plus / Shift+Minus / Shift+0 for zoom in / out / reset; like the modifier, all configurable through persisted settings.
 - **Fixed-element policy**: three modes — scale-everything (default), protect-modals (modals stay viewport-anchored at 1×), protect-sticky-too. Protected elements are excluded from the transform via live tracking. Policy configurable globally or per-site.
 - **Settings**: per-site zoom memory is configurable and off by default; crisp-text escape hatch is per-site opt-in; layer-budget warning triggers instrumentation to learn the real envelope. Settings shape lives in `chrome.storage`.
 - **Letterbox bands**: zoom-out below 1× stretches only the page background to the viewport edges; content geometry untouched.

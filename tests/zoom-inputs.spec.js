@@ -33,9 +33,9 @@ async function gestureWheel(page, cx, cy, deltaY, count = 1, modifiers = {}) {
   );
 }
 
-// Alt+Plus on the main keyboard is Shift+=, which real browsers report as the
+// Shift+Plus on the main keyboard is Shift+=, which real browsers report as the
 // '+' key. Playwright's accelerator cannot produce the shifted character, so
-// the hotkeys are driven as DOM keydown events with the real '+' key/Alt
+// the hotkeys are driven as DOM keydown events with the real '+' key/Shift
 // modifier — the exact event our listener consumes.
 async function pressHotkey(page, key) {
   await page.evaluate((key) => {
@@ -44,7 +44,7 @@ async function pressHotkey(page, key) {
         key,
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       })
     );
   }, key);
@@ -109,8 +109,8 @@ test.describe('03 — scale model and zoom inputs', () => {
     const pixelBefore = await probePixel(page, shotBefore, cx, cy);
     expect(pixelBefore).toEqual([255, 0, 0]);
 
-    // Four notches of Alt+wheel zoom-in anchored under the cursor.
-    await gestureWheel(page, cx, cy, -100, 4, { altKey: true });
+    // Four notches of Shift+wheel zoom-in anchored under the cursor.
+    await gestureWheel(page, cx, cy, -100, 4, { shiftKey: true });
 
     const expectedScale = 1.05 ** 4;
     const after = await page.evaluate(({ cx, cy }) => {
@@ -145,7 +145,7 @@ test.describe('03 — scale model and zoom inputs', () => {
     expect(pixelAfter).toEqual([255, 0, 0]);
   });
 
-  test('@fixture Alt+Plus / Alt+Minus / Alt+0 zoom in, out, and reset to exactly 1x', async ({
+  test('@fixture Shift+Plus / Shift+Minus / Shift+0 zoom in, out, and reset to exactly 1x', async ({
     page,
   }) => {
     await loadVisualZoom(page);
@@ -189,7 +189,7 @@ test.describe('03 — scale model and zoom inputs', () => {
     await page.evaluate(() => vz.setZoomBelow100(true));
 
     // Zoom in by gesture: 3 notches.
-    await gestureWheel(page, 512, 384, -100, 3, { altKey: true });
+    await gestureWheel(page, 512, 384, -100, 3, { shiftKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.05 ** 3, 10);
 
     // Hotkeys continue from the same settled scale, not from 1x.
@@ -199,11 +199,11 @@ test.describe('03 — scale model and zoom inputs', () => {
     expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.05 ** 3, 10);
 
     // And gesture again from that state.
-    await gestureWheel(page, 512, 384, -100, 2, { altKey: true });
+    await gestureWheel(page, 512, 384, -100, 2, { shiftKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBeCloseTo(1.05 ** 5, 10);
 
     // Gesturing out clamps to the envelope, and reset recovers exactly 1x.
-    await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
+    await gestureWheel(page, 512, 384, 100, 1000, { shiftKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBe(0.3);
     await pressHotkey(page, '0');
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
@@ -222,7 +222,7 @@ test.describe('03 — scale model and zoom inputs', () => {
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
 
     // Wheel zoom-out clamps the same way.
-    await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
+    await gestureWheel(page, 512, 384, 100, 1000, { shiftKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBe(1);
 
     // Directly setting a sub-1x scale is clamped to 100% too.
@@ -231,7 +231,7 @@ test.describe('03 — scale model and zoom inputs', () => {
 
     // Enabling the gate live lets zoom-out pass 1x down to the envelope floor.
     await page.evaluate(() => vz.setZoomBelow100(true));
-    await gestureWheel(page, 512, 384, 100, 1000, { altKey: true });
+    await gestureWheel(page, 512, 384, 100, 1000, { shiftKey: true });
     expect(await page.evaluate(() => vz.getScale())).toBe(0.3);
 
     // Disabling the gate live re-clamps a settled sub-1x scale to 100%.
@@ -254,7 +254,7 @@ test.describe('03 — scale model and zoom inputs', () => {
             clientY: 384,
             bubbles: true,
             cancelable: true,
-            altKey: true,
+            shiftKey: true,
           })
         );
       }
@@ -310,7 +310,7 @@ test.describe('03 — scale model and zoom inputs', () => {
 
     // Ctrl+wheel is not claimed by our gesture: its default is not prevented
     // (so the browser's native reflow zoom proceeds) and our scale is static.
-    // Ctrl+Alt+wheel is equally unclaimed — the hotkeys' Ctrl exclusion
+    // Ctrl+Shift+wheel is equally unclaimed — the hotkeys' Ctrl exclusion
     // applies to the gesture too.
     const ctrlWheel = await page.evaluate(() => {
       const e = new WheelEvent('wheel', {
@@ -327,7 +327,7 @@ test.describe('03 — scale model and zoom inputs', () => {
     });
     expect(ctrlWheel).toBe(false);
 
-    const ctrlAltWheel = await page.evaluate(() => {
+    const ctrlShiftWheel = await page.evaluate(() => {
       const e = new WheelEvent('wheel', {
         deltaY: -100,
         deltaMode: 0,
@@ -336,15 +336,15 @@ test.describe('03 — scale model and zoom inputs', () => {
         bubbles: true,
         cancelable: true,
         ctrlKey: true,
-        altKey: true,
+        shiftKey: true,
       });
       window.dispatchEvent(e);
       return e.defaultPrevented;
     });
-    expect(ctrlAltWheel).toBe(false);
+    expect(ctrlShiftWheel).toBe(false);
 
     // Ctrl+Plus (Ctrl+Shift+=, key '+') is not claimed by our hotkeys (which
-    // are Alt): the default is not prevented, so native zoom proceeds.
+    // are Shift): the default is not prevented, so native zoom proceeds.
     const ctrlPlus = await page.evaluate(() => {
       const e = new KeyboardEvent('keydown', {
         key: '+',

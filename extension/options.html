@@ -17,6 +17,13 @@
         <select id="modifier"></select>
         <p class="hint">Held while scrolling to zoom. Native browser zoom keeps its
         Ctrl combos unless this is set to Ctrl.</p>
+        <p id="alt-warning" class="warning" hidden>
+          <strong>Warning:</strong> Firefox intercepts Alt+scroll for history
+          navigation (<code>mousewheel.with_alt.action</code> defaults to 2)
+          and never delivers the wheel event to page JavaScript. Gesture zoom
+          will not work unless you change this pref to 0 or 1 in
+          <code>about:config</code>.
+        </p>
       </div>
       <div class="row">
         <span class="label">Zoom hotkeys</span>

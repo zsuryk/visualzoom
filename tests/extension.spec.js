@@ -48,7 +48,7 @@ async function openPopup(ctx, page, extId) {
   return popup;
 }
 
-// Alt+Plus on the main keyboard is Shift+=, which real browsers report as the
+// Shift+Plus on the main keyboard is Shift+=, which real browsers report as the
 // '+' key. Playwright's accelerator cannot produce the shifted character and
 // the headless build reports '=' anyway, so the hotkeys are driven as DOM
 // keydown events — the exact event our content-script listener consumes.
@@ -59,7 +59,7 @@ async function pressHotkey(page, key) {
         key: k,
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       })
     );
   }, key);
@@ -176,7 +176,7 @@ test.describe('05 — minimal MV3 extension shell', () => {
             clientY: 384,
             bubbles: true,
             cancelable: true,
-            altKey: true,
+            shiftKey: true,
           })
         );
       });

@@ -108,6 +108,24 @@ input[type="text"] {
   font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
+.warning {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid #d4a017;
+  border-radius: 6px;
+  background: #fef9e7;
+  color: #6b5900;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.warning code {
+  background: #f1f1f4;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
 .hotkeys {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

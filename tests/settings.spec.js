@@ -167,7 +167,7 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
 
       const options = await ctx.newPage();
       await options.goto(`chrome-extension://${extId}/options.html`);
-      await expect(options.locator('#modifier')).toHaveValue('altKey');
+      await expect(options.locator('#modifier')).toHaveValue('shiftKey');
 
       // Change the gesture modifier to Ctrl and the zoom-in hotkey key to "x",
       // without touching the already-open page or reloading the extension.
@@ -175,18 +175,18 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await options.locator('#hotkey-zoom-in-key').fill('x');
       await options.locator('#hotkey-zoom-in-key').press('Enter');
 
-      // The open page reacts live: Ctrl+wheel now gestures, Alt+wheel does not.
-      await dispatchWheel(page, -100, { altKey: true });
+      // The open page reacts live: Ctrl+wheel now gestures, Shift+wheel does not.
+      await dispatchWheel(page, -100, { shiftKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
       await dispatchWheel(page, -100, { ctrlKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
 
-      // The hotkey change is live too: Alt+x zooms in, Alt++ does not.
-      await dispatchKey(page, 'x', { altKey: true });
+      // The hotkey change is live too: Ctrl+x zooms in, Ctrl++ does not.
+      await dispatchKey(page, 'x', { ctrlKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1.1025, 0, 0, 1.1025, 0, 0)');
-      await dispatchKey(page, '+', { altKey: true });
+      await dispatchKey(page, '+', { ctrlKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1.1025, 0, 0, 1.1025, 0, 0)');
-      await dispatchKey(page, '0', { altKey: true });
+      await dispatchKey(page, '0', { ctrlKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1, 0, 0, 1, 0, 0)');
 
       // The settings persist: a fresh options page shows them, and a fresh
@@ -199,7 +199,7 @@ test.describe('06 — settings, options page, per-site behavior, crisp text', ()
       await expect(page.locator(WRAPPER)).toHaveCount(1);
       await dispatchWheel(page, -100, { ctrlKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
-      await dispatchWheel(page, -100, { altKey: true });
+      await dispatchWheel(page, -100, { shiftKey: true });
       await expect(wrapperTransform(page)).resolves.toBe('matrix(1.05, 0, 0, 1.05, 0, 0)');
     } finally {
       await ctx.close();

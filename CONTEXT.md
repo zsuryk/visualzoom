@@ -13,7 +13,7 @@ An interaction mode where the entire page scales as one unit and remains fully i
 _Avoid_: Lens, magnifier, snapshot zoom
 
 **Zoom modifier**:
-The user-configurable key (e.g., Ctrl/Alt/Shift) that, combined with a gesture (e.g., scrollwheel), triggers visual zoom. Lives in persisted settings, never hardcoded. Defaults to a key the browser's native zoom doesn't already claim (Alt), so visual zoom and native reflow zoom can coexist on the same page.
+The user-configurable key (e.g., Ctrl/Alt/Shift) that, combined with a gesture (e.g., scrollwheel), triggers visual zoom. Lives in persisted settings, never hardcoded. Defaults to Shift (Alt is avoided because Firefox intercepts Alt+scroll for history navigation and never delivers the wheel event to page JavaScript).
 
 ## Interaction modes
 
@@ -22,7 +22,7 @@ Visual zoom driven by the zoom modifier + scrollwheel, without leaving the page.
 _Avoid_: Hotkey zoom, slider zoom
 
 **Zoom hotkeys**:
-The Alt+Plus / Alt+Minus / Alt+0 commands for zoom in, zoom out, and reset — the keyboard-only counterpart to gesture zoom, kept off Ctrl (native zoom's combos) so the two zooms coexist. Like the modifier, fully configurable in persisted settings.
+The Shift+Plus / Shift+Minus / Shift+0 commands for zoom in, zoom out, and reset — the keyboard-only counterpart to gesture zoom, kept off Ctrl (native zoom's combos) so the two zooms coexist. Like the modifier, fully configurable in persisted settings.
 
 **Settled zoom**:
 The scale value in effect when the user stops gesturing. On zoom-in, settled text is expected to be blurry by design; layout fidelity is the product's identity.

@@ -9,13 +9,13 @@ import {
 } from '../src/settings/store.js';
 
 test.describe('06 — settings core', () => {
-  test('@unit defaults: alt modifier, per-site memory off, zoom-below-100 off, crisp-text never on', () => {
+  test('@unit defaults: shift modifier, per-site memory off, zoom-below-100 off, crisp-text never on', () => {
     const s = sanitizeSettings(undefined);
-    expect(s.zoomModifier).toBe('altKey');
+    expect(s.zoomModifier).toBe('shiftKey');
     expect(s.hotkeys).toEqual({
-      zoomIn: { modifier: 'altKey', key: '+' },
-      zoomOut: { modifier: 'altKey', key: '-' },
-      reset: { modifier: 'altKey', key: '0' },
+      zoomIn: { modifier: 'shiftKey', key: '+' },
+      zoomOut: { modifier: 'shiftKey', key: '-' },
+      reset: { modifier: 'shiftKey', key: '0' },
     });
     expect(s.memoryDefault).toBe(false);
     expect(s.zoomBelow100).toBe(false);
@@ -35,9 +35,9 @@ test.describe('06 — settings core', () => {
       bogus: 42,
       sites: 'nope',
     });
-    expect(s.zoomModifier).toBe('altKey');
-    expect(s.hotkeys.zoomIn).toEqual({ modifier: 'altKey', key: '+' });
-    expect(s.hotkeys.zoomOut).toEqual({ modifier: 'altKey', key: '-' });
+    expect(s.zoomModifier).toBe('shiftKey');
+    expect(s.hotkeys.zoomIn).toEqual({ modifier: 'shiftKey', key: '+' });
+    expect(s.hotkeys.zoomOut).toEqual({ modifier: 'shiftKey', key: '-' });
     expect(s.hotkeys.reset).toEqual({ modifier: 'ctrlKey', key: '0' });
     expect(s.memoryDefault).toBe(false);
     expect(s.zoomBelow100).toBe(false);

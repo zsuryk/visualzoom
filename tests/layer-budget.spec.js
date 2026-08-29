@@ -31,7 +31,7 @@ async function pressHotkey(page, key) {
         key: k,
         bubbles: true,
         cancelable: true,
-        altKey: true,
+        shiftKey: true,
       })
     );
   }, key);
