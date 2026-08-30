@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Chrome extension
+        run: npm run build
+      - name: Zip Chrome extension
+        run: zip -r visualzoom-chrome.zip extension/
+
+      - name: Build Firefox extension
+        run: npm run build:firefox
+      - name: Zip Firefox extension
+        run: zip -r visualzoom-firefox.zip extension/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            visualzoom-chrome.zip
+            visualzoom-firefox.zip
+          generate_release_notes: true
