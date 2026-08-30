@@ -5,7 +5,10 @@
   "description": "Zoom a page by scaling its rendered pixels, not by reflowing the layout.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "{83bfea40-bffd-4443-92d8-30e4bff180fe}"
+      "id": "{83bfea40-bffd-4443-92d8-30e4bff180fe}",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   },
   "icons": {
