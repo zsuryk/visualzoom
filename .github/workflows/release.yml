@@ -24,12 +24,12 @@ jobs:
       - name: Build Chrome extension
         run: npm run build
       - name: Zip Chrome extension
-        run: zip -r visualzoom-chrome.zip extension/
+        run: zip -r -j visualzoom-chrome.zip extension/
 
       - name: Build Firefox extension
         run: npm run build:firefox
       - name: Zip Firefox extension
-        run: zip -r visualzoom-firefox.zip extension/
+        run: zip -r -j visualzoom-firefox.zip extension/
 
       - name: Create release
         uses: softprops/action-gh-release@v2
