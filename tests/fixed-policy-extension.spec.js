@@ -1,35 +1,7 @@
-import { test, expect, chromium } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { chromiumLaunchOptions, PORT } from './helpers/browser-env.js';
-
-const EXTENSION_PATH = fileURLToPath(new URL('../extension/', import.meta.url));
-const BASE = `http://127.0.0.1:${PORT}`;
-const FIXTURE = `${BASE}/fixtures/native-zoom-breaking.html`;
+import { test, expect } from '@playwright/test';
+import { launchExtension, FIXTURE } from './helpers/extension-env.js';
 
 test.describe.configure({ mode: 'serial' });
-
-async function launchExtension() {
-  const ctx = await chromium.launchPersistentContext('', {
-    channel: 'chromium',
-    headless: true,
-    viewport: { width: 1024, height: 768 },
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-    ],
-    ...chromiumLaunchOptions(),
-  });
-  let worker = ctx.serviceWorkers().find((w) => w.url().startsWith('chrome-extension://'));
-  for (let i = 0; i < 40 && !worker; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    worker = ctx.serviceWorkers().find((w) => w.url().startsWith('chrome-extension://'));
-  }
-  if (!worker) {
-    await ctx.close();
-    throw new Error('the extension service worker never started');
-  }
-  return { ctx, extId: new URL(worker.url()).host };
-}
 
 async function openFixture(page, url = FIXTURE) {
   await page.goto(url);

@@ -26,20 +26,6 @@ export function scaleOut(scale, minScale = MIN_SCALE) {
   return clampScale(scale / STEP_FACTOR, minScale);
 }
 
-export function scaledSize(width, height, scale) {
-  return { width: width * scale, height: height * scale };
-}
-
-export function letterbox(viewportWidth, viewportHeight, contentWidth, contentHeight, scale) {
-  const { width, height } = scaledSize(contentWidth, contentHeight, scale);
-  return {
-    contentWidth: width,
-    contentHeight: height,
-    right: Math.max(0, viewportWidth - width),
-    bottom: Math.max(0, viewportHeight - height),
-  };
-}
-
 // The scroll positions that keep the point under the cursor (cursorX,
 // cursorY, in viewport px) visually fixed when the scale changes from
 // fromScale to toScale. A content coordinate p appears at screen position
@@ -53,14 +39,12 @@ export function anchoredScroll(scrollX, scrollY, cursorX, cursorY, fromScale, to
   };
 }
 
-import { POLICIES } from '../settings/store.js';
+import { POLICIES, DEFAULT_HOTKEYS } from '../settings/store.js';
+import { createFixedPolicy } from './fixed-policy.js';
+import { createNotices } from './notices.js';
 
 const WRAPPER_ID = 'visual-zoom-wrapper';
-const NOTICE_ID = 'visual-zoom-notice';
-const BUDGET_NOTICE_ID = 'visual-zoom-budget-notice';
 const transparent = 'rgba(0, 0, 0, 0)';
-
-const FIXED_LAYER_ID = 'visual-zoom-fixed-layer';
 
 // Wrapper-survival budget: a page that clears or replaces body contents (SPA
 // frameworks) destroys the injected wrapper; the module re-applies it. The
@@ -79,12 +63,6 @@ const MAX_REAPPLY_TRIES = 2;
 // settings (ticket 06) feed the live value in through createVisualZoom's
 // modifier option / setInputs().
 export const DEFAULT_MODIFIER = 'shiftKey';
-
-export const DEFAULT_HOTKEYS = {
-  zoomIn: { modifier: 'shiftKey', key: '+' },
-  zoomOut: { modifier: 'shiftKey', key: '-' },
-  reset: { modifier: 'shiftKey', key: '0' },
-};
 
 // Rough pixel advance of one wheel notch; each notch steps the scale
 // multiplicatively by STEP_FACTOR. Line-mode and page-mode deltas are
@@ -112,13 +90,6 @@ let listenersAttached = false;
 // (e.g. YouTube thumbnail hover autoplay).
 let bodyScaled = false;
 
-// Fixed-element policy state: the active mode and the elements currently
-// lifted out of the scaled wrapper into the unscaled fixed layer (ticket 07).
-let fixedPolicy = 'scale-everything';
-let fixedLayer = null;
-const protectedElements = new Map();
-let fixedObserver = null;
-
 // Extension wiring hooks. The content-script entry passes implementations
 // that talk to chrome.runtime; in the fixture/unit context they stay null and
 // every call is a no-op (telemetry falls back to a console line instead).
@@ -133,8 +104,6 @@ let observer = null;
 let tornDown = false;
 let wrapperLossCount = 0;
 let stabilityTimer = null;
-let noticeShown = false;
-let budgetNoticeShown = false;
 
 // Whether the configured gesture modifier is held, without colliding with
 // native browser shortcuts. Alt/Shift combos also require Ctrl and Meta to be
@@ -173,6 +142,9 @@ function getWrapper() {
   }
   return document.getElementById(WRAPPER_ID);
 }
+
+const fixedPolicy = createFixedPolicy({ getWrapper });
+const notices = createNotices();
 
 // The effective scale floor: 1x unless zoom-below-100 is enabled, in which
 // case the full 0.3x envelope floor applies.
@@ -384,7 +356,7 @@ function wrapBody(targetScale) {
   origHeight = html.scrollHeight;
   pageBackground = captureBackground();
 
-  if (fixedPolicy === 'scale-everything') {
+  if (fixedPolicy.getPolicy() === 'scale-everything') {
     bodyScaled = true;
     body.style.transformOrigin = '0 0';
     body.style.width = `${origWidth}px`;
@@ -410,7 +382,7 @@ function wrapBody(targetScale) {
     attachListeners();
     scale = clampScale(targetScale, effectiveMinScale());
     applyLayout(scale, el);
-    syncPolicy();
+    fixedPolicy.syncPolicy();
   }
   checkLayerBudget();
   notifyScale();
@@ -419,8 +391,8 @@ function wrapBody(targetScale) {
 // Restore the original DOM. Idempotent whether the body-transform or wrapper
 // approach is currently active.
 function unwrap() {
-  clearProtected();
-  stopFixedObserver();
+  fixedPolicy.clearProtected();
+  fixedPolicy.stopFixedObserver();
   // Stop the body observer BEFORE DOM mutations: moveChildren and
   // active.remove() mutate body's childList, which would fire onBodyMutation
   // and trigger reapplyAfterLoss(), recreating the wrapper we just destroyed.
@@ -441,7 +413,7 @@ function unwrap() {
       active.remove();
     }
   }
-  removeBudgetNotice();
+  notices.removeBudgetNotice();
   restoreStylesAndState();
   detachListeners();
   notifyScale();
@@ -478,15 +450,15 @@ function setCrispText(enabled) {
 // styles, so the crisp reflow can take over and a later re-wrap reuses the
 // page's true originals.
 function removeWrapperKeepZoom() {
-  clearProtected();
-  stopFixedObserver();
+  fixedPolicy.clearProtected();
+  fixedPolicy.stopFixedObserver();
   if (bodyScaled) {
     document.body.style.transform = '';
     document.body.style.transformOrigin = '';
     document.body.style.width = '';
     document.body.style.height = '';
     bodyScaled = false;
-    removeBudgetNotice();
+    notices.removeBudgetNotice();
     if (savedStyles) {
       const html = document.documentElement;
       const body = document.body;
@@ -502,7 +474,7 @@ function removeWrapperKeepZoom() {
   }
   moveChildren(active, document.body);
   active.remove();
-  removeBudgetNotice();
+  notices.removeBudgetNotice();
   if (savedStyles) {
     const html = document.documentElement;
     const body = document.body;
@@ -510,93 +482,6 @@ function removeWrapperKeepZoom() {
     html.style.background = savedStyles.html.background;
     body.style.overflow = savedStyles.body.overflow;
   }
-}
-
-function getNotice() {
-  return document.getElementById(NOTICE_ID);
-}
-
-// One-time, non-blocking toast: fixed bottom-right, dismissible, and never
-// intercepts page interaction. Shared by the teardown and layer-budget
-// notices. Nothing is shown again once the caller's one-shot flag is set.
-function showToast(id, message, background, zIndex) {
-  const body = document.body;
-  if (!body) {
-    return;
-  }
-  const notice = document.createElement('div');
-  notice.id = id;
-  notice.setAttribute('role', 'status');
-  notice.style.cssText =
-    `position:fixed;right:16px;bottom:16px;z-index:${zIndex};max-width:320px;` +
-    `padding:12px 16px;border-radius:8px;background:${background};color:#fff;` +
-    'font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;' +
-    'box-shadow:0 4px 16px rgba(0,0,0,0.35);';
-  const messageEl = document.createElement('span');
-  messageEl.textContent = message;
-  const dismiss = document.createElement('button');
-  dismiss.type = 'button';
-  dismiss.textContent = 'Dismiss';
-  dismiss.style.cssText =
-    'margin-left:8px;padding:2px 8px;border:1px solid rgba(255,255,255,0.4);' +
-    'border-radius:4px;background:transparent;color:inherit;font:inherit;cursor:pointer;';
-  dismiss.addEventListener('click', () => notice.remove());
-  notice.append(messageEl, dismiss);
-  body.appendChild(notice);
-}
-
-// One-time, non-blocking notice after a graceful teardown. Nothing is shown
-// again once noticeShown is set, and nothing after this function mutates the
-// DOM.
-function showNotice() {
-  if (noticeShown) {
-    return;
-  }
-  noticeShown = true;
-  showToast(
-    NOTICE_ID,
-    'Visual Zoom stopped: the page replaced its own content, so zoom was reset to 100%.',
-    '#17203a',
-    2147483647
-  );
-}
-
-function removeNotice() {
-  const notice = getNotice();
-  if (notice) {
-    notice.remove();
-  }
-}
-
-// ---- Layer budget warning ----
-
-function getBudgetNotice() {
-  return document.getElementById(BUDGET_NOTICE_ID);
-}
-
-function removeBudgetNotice() {
-  const notice = getBudgetNotice();
-  if (notice) {
-    notice.remove();
-  }
-}
-
-// One-time, non-blocking notice when the scaled page exceeds the browser's
-// compositor texture limit: zooming a huge page into a texture-sized layer can
-// be slow. It never blocks zoom interaction and fires at most once per page
-// load (budgetNoticeShown, reset on re-engage via apply()).
-function showBudgetNotice() {
-  if (budgetNoticeShown) {
-    return;
-  }
-  budgetNoticeShown = true;
-  showToast(
-    BUDGET_NOTICE_ID,
-    'Visual Zoom may be slow on this page: it is larger than the browser\'s ' +
-      'compositor texture limit.',
-    '#3a2d12',
-    2147483646
-  );
 }
 
 // Instrumented telemetry for the layer budget so the real envelope is known
@@ -611,240 +496,18 @@ function telemetry(event, data) {
 }
 
 function checkLayerBudget() {
-  if (budgetNoticeShown || tornDown || !getWrapper()) {
+  if (notices.isBudgetNoticeShown() || tornDown || !getWrapper()) {
     return;
   }
   if (!budgetExceeded(origWidth, origHeight, scale)) {
     return;
   }
-  showBudgetNotice();
+  notices.showBudgetNotice();
   telemetry('layer-budget-exceeded', {
     width: Math.round(origWidth * scale),
     height: Math.round(origHeight * scale),
     scale,
   });
-}
-
-// ---- Fixed-element policy ----
-//
-// Protected fixed/sticky elements are "lifted" out of the scaled wrapper into
-// a fixed layer that lives at body level, outside any transform. A lifted
-// element keeps its own CSS, so a `position: fixed` modal re-anchors to the
-// viewport at 1x while the rest of the page scales, and a sticky header lifted
-// as `position: fixed` stays viewport-anchored too. Elements that become
-// fixed after the page is already zoomed (SPA-rendered modals, dynamically
-// added sticky elements) are caught by a live subtree observer and lifted the
-// moment they appear.
-
-// The layer is a sibling of the wrapper, so it is never scaled: its fixed
-// children anchor to the viewport at 1x. It covers the viewport but passes
-// interaction through everywhere a lifted element isn't painted; each lifted
-// element keeps its own pointer-events.
-function ensureFixedLayer() {
-  if (fixedLayer) {
-    return fixedLayer;
-  }
-  fixedLayer = document.createElement('div');
-  fixedLayer.id = FIXED_LAYER_ID;
-  fixedLayer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:0;';
-  document.body.appendChild(fixedLayer);
-  return fixedLayer;
-}
-
-function removeFixedLayer() {
-  if (fixedLayer) {
-    fixedLayer.remove();
-    fixedLayer = null;
-  }
-}
-
-// Whether the current policy protects this element. Sticky table headers
-// (sticky cells inside a <table>) are left to their own scroll container —
-// lifting them out of the table would collapse its layout — so only page-level
-// sticky chrome (headers/navs) is protected.
-function shouldProtect(el) {
-  if (fixedPolicy === 'scale-everything') {
-    return false;
-  }
-  const position = getComputedStyle(el).position;
-  if (position === 'fixed') {
-    return true;
-  }
-  return (
-    position === 'sticky' && fixedPolicy === 'protect-sticky-too' && !el.closest('table')
-  );
-}
-
-// Skip elements that are already inside a lifted element: lifting the outermost
-// fixed element (e.g. a modal backdrop) brings its descendants along, and
-// re-lifting them would break their offset positioning.
-function isDescendantOfProtected(el) {
-  for (const protectedEl of protectedElements.keys()) {
-    if (protectedEl !== el && protectedEl.contains(el)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function liftElement(el) {
-  if (protectedElements.has(el) || isDescendantOfProtected(el)) {
-    return;
-  }
-  if (!shouldProtect(el)) {
-    return;
-  }
-  const inlinePosition = el.style.position;
-  const inlinePointerEvents = el.style.pointerEvents;
-  const inlineWidth = el.style.width;
-  // A sticky element only sticks against a scroll container; lifted to the
-  // viewport layer it must be fixed to stay viewport-anchored at 1x. In flow
-  // its auto width fills its scroll container, but a fixed element's auto
-  // width shrinks to its content — pin the computed in-flow width so a
-  // full-width header keeps its full width at 1x. (A sticky that hasn't stuck
-  // yet still anchors at its flow position, which matches the fixture navs
-  // this policy is designed for; below-the-fold chunky stickies are outside
-  // scope.)
-  if (getComputedStyle(el).position === 'sticky') {
-    el.style.width = getComputedStyle(el).width;
-    el.style.position = 'fixed';
-  }
-  // The fixed layer passes interaction through with pointer-events:none,
-  // which its descendants inherit — so each lifted element re-asserts
-  // pointer-events:auto to stay interactive (protected elements must remain
-  // usable, per the ticket). All overrides are restored on unlift.
-  el.style.pointerEvents = 'auto';
-  protectedElements.set(el, {
-    parent: el.parentNode,
-    next: el.nextSibling,
-    inlinePosition,
-    inlinePointerEvents,
-    inlineWidth,
-  });
-  ensureFixedLayer().appendChild(el);
-}
-
-// Restore a lifted element to its original spot in the wrapped page. If the
-// page removed the element itself while it was lifted, or destroyed its
-// original parent (body-level content replacement), drop the orphan rather
-// than re-attach stale nodes.
-function unliftElement(el) {
-  const record = protectedElements.get(el);
-  if (!record) {
-    return;
-  }
-  protectedElements.delete(el);
-  // A page closing a modal deletes its node; the element then lives nowhere,
-  // so restoring it would resurrect something the page intentionally removed.
-  if (!el.isConnected) {
-    return;
-  }
-  el.style.position = record.inlinePosition;
-  el.style.pointerEvents = record.inlinePointerEvents;
-  el.style.width = record.inlineWidth;
-  if (record.parent && record.parent.isConnected) {
-    if (record.next && record.next.isConnected) {
-      record.parent.insertBefore(el, record.next);
-    } else {
-      record.parent.appendChild(el);
-    }
-  } else {
-    // The page destroyed the original parent (body-level content
-    // replacement): the element only survives in the fixed layer, so drop it.
-    el.remove();
-  }
-}
-
-function clearProtected() {
-  for (const el of Array.from(protectedElements.keys())) {
-    unliftElement(el);
-  }
-  removeFixedLayer();
-}
-
-function walkElements(root, fn) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    fn(node);
-  }
-}
-
-function scanAndLift(root) {
-  if (fixedPolicy === 'scale-everything') {
-    return;
-  }
-  const candidates = [];
-  if (shouldProtect(root)) {
-    candidates.push(root);
-  }
-  walkElements(root, (el) => {
-    if (shouldProtect(el)) {
-      candidates.push(el);
-    }
-  });
-  for (const el of candidates) {
-    liftElement(el);
-  }
-}
-
-// Live tracking: new nodes added to the wrapped page (SPA-rendered modals)
-// and class/style changes that turn elements fixed (a modal shown via a
-// class on its own or an ancestor container) both land here. Each change is
-// scanned in place; already-lifted elements are skipped because they no
-// longer live inside the observed wrapper. (Shadow-root modals are out of
-// scope for the fixture-proven tracker.)
-function onFixedMutation(mutations) {
-  for (const mutation of mutations) {
-    if (mutation.type === 'attributes') {
-      // A class/style change on an ancestor can make a whole subtree fixed,
-      // so scan the changed element's subtree, not just the element.
-      scanAndLift(mutation.target);
-    } else if (mutation.type === 'childList') {
-      for (const added of mutation.addedNodes) {
-        if (added.nodeType === Node.ELEMENT_NODE) {
-          scanAndLift(added);
-        }
-      }
-    }
-  }
-}
-
-function startFixedObserver() {
-  if (fixedObserver || fixedPolicy === 'scale-everything') {
-    return;
-  }
-  const wrapper = getWrapper();
-  if (!wrapper) {
-    return;
-  }
-  fixedObserver = new MutationObserver(onFixedMutation);
-  fixedObserver.observe(wrapper, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style'],
-  });
-}
-
-function stopFixedObserver() {
-  if (!fixedObserver) {
-    return;
-  }
-  fixedObserver.disconnect();
-  fixedObserver = null;
-}
-
-// Apply the current policy to the live page: restore every lifted element,
-// re-scan the wrapped content under the new policy, and resume tracking.
-// Safe to call with no wrapper (e.g. crisp-text reflow or a disabled site).
-function syncPolicy() {
-  clearProtected();
-  stopFixedObserver();
-  if (!getWrapper() || fixedPolicy === 'scale-everything') {
-    return;
-  }
-  scanAndLift(getWrapper());
-  startFixedObserver();
 }
 
 // The page replaced or cleared body contents, taking the wrapper with it.
@@ -924,7 +587,7 @@ function stopObserving() {
 function teardown() {
   tornDown = true;
   unwrap();
-  showNotice();
+  notices.showNotice();
 }
 
 export function createVisualZoom({
@@ -940,16 +603,15 @@ export function createVisualZoom({
   zoomModifier = modifier;
   inputHotkeys = hotkeys;
   if (POLICIES.includes(policy)) {
-    fixedPolicy = policy;
+    fixedPolicy.setPolicy(policy);
   }
   zoomBelow100 = allowZoomBelow100;
 
   function apply(initialScale = 1) {
     tornDown = false;
-    removeNotice();
-    noticeShown = false;
-    removeBudgetNotice();
-    budgetNoticeShown = false;
+    notices.removeNotice();
+    notices.removeBudgetNotice();
+    notices.reset();
     if (crispText) {
       applyScale(initialScale);
       return;
@@ -1001,11 +663,11 @@ export function createVisualZoom({
   // A new fixed-element policy applies to the live page immediately: protected
   // elements are lifted or restored without reloading anything.
   function setPolicy(nextPolicy) {
-    if (!POLICIES.includes(nextPolicy) || nextPolicy === fixedPolicy) {
+    if (!POLICIES.includes(nextPolicy) || nextPolicy === fixedPolicy.getPolicy()) {
       return;
     }
     const wasZoomed = scale !== 1;
-    fixedPolicy = nextPolicy;
+    fixedPolicy.setPolicy(nextPolicy);
     if (wasZoomed) {
       // Re-apply the zoom with the new policy: this handles transitions
       // between body-transform and wrapper approaches.

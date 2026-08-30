@@ -17,11 +17,13 @@ const entryPoints = [
   resolve(root, 'src/content/content-script.js'),
   resolve(root, 'src/extension/popup.js'),
   resolve(root, 'src/extension/options.js'),
+  resolve(root, 'src/background.js'),
 ];
 const outfiles = [
   resolve(root, 'extension/content-script.js'),
   resolve(root, 'extension/popup.js'),
   resolve(root, 'extension/options.js'),
+  resolve(root, 'extension/background.js'),
 ];
 
 await Promise.all(

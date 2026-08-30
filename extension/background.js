@@ -1,85 +1,83 @@
-// Background service worker: the message hub between the popup and the
-// content scripts, and the telemetry log sink.
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || typeof msg.type !== 'string') {
-    return;
-  }
-
-  // Popup asks for the active tab's zoom state on open.
-  if (msg.type === 'vz-get-state') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs && tabs[0];
-      if (!tab || tab.id == null) {
-        sendResponse({ ok: false });
+(() => {
+  // src/background.js
+  function createMessageRouter({ chrome: chrome2 }) {
+    function handleMessage(msg, sender, sendResponse) {
+      if (!msg || typeof msg.type !== "string") {
         return;
       }
-      chrome.tabs.sendMessage(tab.id, { type: 'vz-get-state' }, (resp) => {
-        if (chrome.runtime.lastError || !resp) {
-          sendResponse({ ok: false });
-          return;
-        }
-        sendResponse({
-          ok: true,
-          scale: resp.scale,
-          wrapped: resp.wrapped,
-          active: resp.active,
-          enabled: resp.enabled,
+      if (msg.type === "vz-get-state") {
+        chrome2.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const tab = tabs && tabs[0];
+          if (!tab || tab.id == null) {
+            sendResponse({ ok: false });
+            return;
+          }
+          chrome2.tabs.sendMessage(tab.id, { type: "vz-get-state" }, (resp) => {
+            if (chrome2.runtime.lastError || !resp) {
+              sendResponse({ ok: false });
+              return;
+            }
+            sendResponse({
+              ok: true,
+              scale: resp.scale,
+              wrapped: resp.wrapped,
+              active: resp.active,
+              enabled: resp.enabled
+            });
+          });
         });
-      });
-    });
-    return true;
-  }
-
-  // Popup asks for the active tab's site hostname (for its per-site toggles).
-  if (msg.type === 'vz-get-host') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs && tabs[0];
-      if (!tab || tab.id == null) {
-        sendResponse({ ok: false });
+        return true;
+      }
+      if (msg.type === "vz-get-host") {
+        chrome2.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const tab = tabs && tabs[0];
+          if (!tab || tab.id == null) {
+            sendResponse({ ok: false });
+            return;
+          }
+          chrome2.tabs.sendMessage(tab.id, { type: "vz-get-host" }, (resp) => {
+            if (chrome2.runtime.lastError || !resp || !resp.hostname) {
+              sendResponse({ ok: false });
+              return;
+            }
+            sendResponse({ ok: true, hostname: resp.hostname });
+          });
+        });
+        return true;
+      }
+      if (msg.type === "vz-set-scale" || msg.type === "vz-step") {
+        chrome2.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const tab = tabs && tabs[0];
+          if (!tab || tab.id == null) {
+            return;
+          }
+          chrome2.tabs.sendMessage(tab.id, msg, () => void chrome2.runtime.lastError);
+        });
         return;
       }
-      chrome.tabs.sendMessage(tab.id, { type: 'vz-get-host' }, (resp) => {
-        if (chrome.runtime.lastError || !resp || !resp.hostname) {
-          sendResponse({ ok: false });
-          return;
-        }
-        sendResponse({ ok: true, hostname: resp.hostname });
-      });
-    });
-    return true;
-  }
-
-  // Popup drives the page: exact scale, or a multiplicative step.
-  if (msg.type === 'vz-set-scale' || msg.type === 'vz-step') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs && tabs[0];
-      if (!tab || tab.id == null) {
+      if (msg.type === "vz-scale-changed" && sender.tab) {
+        chrome2.runtime.sendMessage(
+          {
+            type: "vz-scale-changed",
+            scale: msg.scale,
+            wrapped: msg.wrapped,
+            active: msg.active
+          },
+          () => void chrome2.runtime.lastError
+        );
         return;
       }
-      chrome.tabs.sendMessage(tab.id, msg, () => void chrome.runtime.lastError);
-    });
-    return;
+      if (msg.type === "vz-telemetry") {
+        console.info(`[visual-zoom] telemetry ${msg.event}`, msg.data);
+        return;
+      }
+    }
+    return { handleMessage };
   }
-
-  // Content scripts report every scale change; relay it to the popup so its
-  // readout, slider, and active state stay in sync with gesture/hotkey zoom.
-  if (msg.type === 'vz-scale-changed' && sender.tab) {
-    chrome.runtime.sendMessage(
-      {
-        type: 'vz-scale-changed',
-        scale: msg.scale,
-        wrapped: msg.wrapped,
-        active: msg.active,
-      },
-      () => void chrome.runtime.lastError
+  if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+    const router = createMessageRouter({ chrome });
+    chrome.runtime.onMessage.addListener(
+      (msg, sender, sendResponse) => router.handleMessage(msg, sender, sendResponse)
     );
-    return;
   }
-
-  // Telemetry sink: layer-budget-exceeded and friends are logged here so the
-  // real envelope can be learned before release.
-  if (msg.type === 'vz-telemetry') {
-    console.info(`[visual-zoom] telemetry ${msg.event}`, msg.data);
-    return;
-  }
-});
+})();

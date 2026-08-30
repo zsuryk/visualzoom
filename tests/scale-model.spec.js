@@ -7,8 +7,6 @@ import {
   clampScale,
   scaleIn,
   scaleOut,
-  scaledSize,
-  letterbox,
   anchoredScroll,
   budgetExceeded,
 } from '../src/content/visual-zoom.js';
@@ -50,29 +48,6 @@ test.describe('02 — scale model pure math', () => {
     expect(scaleOut(0.4)).toBeGreaterThanOrEqual(MIN_SCALE);
   });
 
-  test('@unit scaled dimensions multiply the original box', () => {
-    expect(scaledSize(1024, 768, 2)).toEqual({ width: 2048, height: 1536 });
-    expect(scaledSize(1024, 768, 0.5)).toEqual({ width: 512, height: 384 });
-    expect(scaledSize(3200, 200, 1)).toEqual({ width: 3200, height: 200 });
-  });
-
-  test('@unit letterbox geometry leaves bands only when zoomed out', () => {
-    const zoomedIn = letterbox(1024, 768, 1024, 768, 2);
-    expect(zoomedIn).toEqual({
-      contentWidth: 2048,
-      contentHeight: 1536,
-      right: 0,
-      bottom: 0,
-    });
-
-    const zoomedOut = letterbox(1024, 768, 1024, 768, 0.5);
-    expect(zoomedOut.contentWidth).toBe(512);
-    expect(zoomedOut.contentHeight).toBe(384);
-    expect(zoomedOut.right).toBe(512);
-    expect(zoomedOut.bottom).toBe(384);
-    expect(zoomedOut.right + zoomedOut.contentWidth).toBe(1024);
-    expect(zoomedOut.bottom + zoomedOut.contentHeight).toBe(768);
-  });
 });
 
 test.describe('03 — scale model: cursor anchor + even steps', () => {

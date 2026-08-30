@@ -1,51 +1,10 @@
-import { test, expect, chromium } from '@playwright/test';
-import { fileURLToPath } from 'node:url';
-import { chromiumLaunchOptions, PORT } from './helpers/browser-env.js';
-
-const EXTENSION_PATH = fileURLToPath(new URL('../extension/', import.meta.url));
-const BASE = `http://127.0.0.1:${PORT}`;
-const FIXTURE = `${BASE}/fixtures/native-zoom-breaking.html`;
-const HUGE_PAGE = `${BASE}/fixtures/huge-page.html`;
+import { test, expect } from '@playwright/test';
+import { launchExtension, openPopup, BASE, FIXTURE, HUGE_PAGE } from './helpers/extension-env.js';
 
 // The extension tests launch the real unpacked MV3 extension in the full
 // chromium build (the headless shell can't load extensions). Each test gets a
 // fresh browser profile; the launches are heavy, so run them sequentially.
 test.describe.configure({ mode: 'serial' });
-
-async function launchExtension() {
-  const ctx = await chromium.launchPersistentContext('', {
-    channel: 'chromium',
-    headless: true,
-    viewport: { width: 1024, height: 768 },
-    args: [
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-    ],
-    ...chromiumLaunchOptions(),
-  });
-  let worker = ctx.serviceWorkers().find((w) => w.url().startsWith('chrome-extension://'));
-  for (let i = 0; i < 40 && !worker; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    worker = ctx.serviceWorkers().find((w) => w.url().startsWith('chrome-extension://'));
-  }
-  if (!worker) {
-    await ctx.close();
-    throw new Error('the extension service worker never started');
-  }
-  return { ctx, worker, extId: new URL(worker.url()).host };
-}
-
-// The popup asks the background for the *active* tab's zoom state. Opening the
-// popup as a tab makes the popup itself the active tab, so focus the real
-// page, then reload the popup so it queries the page.
-async function openPopup(ctx, page, extId) {
-  const popup = await ctx.newPage();
-  await popup.goto(`chrome-extension://${extId}/popup.html`);
-  await page.bringToFront();
-  await popup.reload();
-  await popup.waitForSelector('#scale');
-  return popup;
-}
 
 // Shift+Plus on the main keyboard is Shift+=, which real browsers report as the
 // '+' key. Playwright's accelerator cannot produce the shifted character and
