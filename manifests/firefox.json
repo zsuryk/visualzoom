@@ -5,8 +5,12 @@
   "description": "Zoom a page by scaling its rendered pixels, not by reflowing the layout.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "visual-zoom@example.local"
+      "id": "83bfea40-bffd-4443-92d8-30e4bff180fe@visualzoom"
     }
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
   },
   "permissions": ["storage"],
   "background": {
@@ -14,7 +18,8 @@
   },
   "action": {
     "default_title": "Visual Zoom",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
   },
   "options_ui": {
     "page": "options.html",

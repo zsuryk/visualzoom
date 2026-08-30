@@ -3,13 +3,18 @@
   "name": "Visual Zoom",
   "version": "0.1.0",
   "description": "Zoom a page by scaling its rendered pixels, not by reflowing the layout.",
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
   "permissions": ["storage"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_title": "Visual Zoom",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
   },
   "options_ui": {
     "page": "options.html",

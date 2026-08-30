@@ -47,4 +47,16 @@ copyFileSync(
   resolve(root, 'extension/manifest.json')
 );
 
+copyFileSync(
+  resolve(root, 'assets/icon.svg'),
+  resolve(root, 'extension/icon.svg')
+);
+
+for (const file of ['popup.html', 'popup.css', 'options.html', 'options.css']) {
+  copyFileSync(
+    resolve(root, `src/extension/${file}`),
+    resolve(root, `extension/${file}`)
+  );
+}
+
 console.log(`built extension (${target})`);
