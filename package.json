@@ -1,6 +1,6 @@
 {
   "name": "visualzoom",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Browser extension that zooms a page by scaling its rendered pixels, not by reflowing.",
   "scripts": {
