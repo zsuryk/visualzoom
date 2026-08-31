@@ -47,10 +47,19 @@ copyFileSync(
   resolve(root, 'extension/manifest.json')
 );
 
-copyFileSync(
-  resolve(root, 'assets/icon.svg'),
-  resolve(root, 'extension/icon.svg')
-);
+if (target === 'chrome') {
+  for (const size of [16, 48, 128]) {
+    copyFileSync(
+      resolve(root, `assets/icon-${size}.png`),
+      resolve(root, `extension/icon-${size}.png`)
+    );
+  }
+} else {
+  copyFileSync(
+    resolve(root, 'assets/icon.svg'),
+    resolve(root, 'extension/icon.svg')
+  );
+}
 
 for (const file of ['popup.html', 'popup.css', 'options.html', 'options.css']) {
   copyFileSync(

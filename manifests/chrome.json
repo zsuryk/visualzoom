@@ -4,10 +4,9 @@
   "version": "1.0.0",
   "description": "Zoom a page by scaling its rendered pixels, not by reflowing the layout.",
   "icons": {
-    "16": "icon.svg",
-    "48": "icon.svg",
-    "96": "icon.svg",
-    "128": "icon.svg"
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
   },
   "permissions": ["storage"],
   "background": {
@@ -16,7 +15,7 @@
   "action": {
     "default_title": "Visual Zoom",
     "default_popup": "popup.html",
-    "default_icon": "icon.svg"
+    "default_icon": "icon-48.png"
   },
   "options_ui": {
     "page": "options.html",
