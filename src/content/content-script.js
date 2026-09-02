@@ -78,7 +78,12 @@ function sync() {
   } else if (controller.isEngaged()) {
     controller.dispose();
   }
-  controller.setInputs({ modifier: settings.zoomModifier, hotkeys: settings.hotkeys });
+  controller.setInputs({
+    modifier: settings.zoomModifier,
+    hotkeys: settings.hotkeys,
+    gestureEnabled: settings.gestureEnabled,
+    hotkeysEnabled: settings.hotkeysEnabled,
+  });
 }
 
 async function boot() {

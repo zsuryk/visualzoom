@@ -13,6 +13,23 @@
     <section class="card">
       <h2>Zoom inputs</h2>
       <div class="row">
+        <label class="check">
+          <input id="gesture-enabled" type="checkbox">
+          <span>Enable gesture zoom</span>
+        </label>
+        <p class="hint">Modifier + scroll wheel to zoom. Disable if you only
+        use keyboard shortcuts and want to avoid accidental scroll zooms.</p>
+      </div>
+      <div class="row">
+        <label class="check">
+          <input id="hotkeys-enabled" type="checkbox">
+          <span>Enable hotkey zoom</span>
+        </label>
+        <p class="hint">Keyboard shortcuts (e.g. Shift++) to zoom in, out,
+        and reset. Disable if you only use scroll wheel and want to avoid
+        hotkey conflicts with typing.</p>
+      </div>
+      <div class="row">
         <label for="modifier">Gesture zoom modifier</label>
         <select id="modifier"></select>
         <p class="hint">Held while scrolling to zoom. Native browser zoom keeps its

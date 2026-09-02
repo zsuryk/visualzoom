@@ -42,6 +42,8 @@ const zoomBelowWarning = document.getElementById('zoom-below-warning');
 const fixedPolicyWarning = document.getElementById('fixed-policy-warning');
 const hotkeyWarnings = document.getElementById('hotkey-warnings');
 const memoryDefault = document.getElementById('memory-default');
+const gestureEnabled = document.getElementById('gesture-enabled');
+const hotkeysEnabled = document.getElementById('hotkeys-enabled');
 const zoomBelow100 = document.getElementById('zoom-below-100');
 const fixedPolicy = document.getElementById('fixed-policy');
 const hotkeyRoots = {
@@ -154,6 +156,8 @@ function render() {
     hotkeyRoots[slot].key.value = settings.hotkeys[slot].key;
   }
   memoryDefault.checked = settings.memoryDefault;
+  gestureEnabled.checked = settings.gestureEnabled;
+  hotkeysEnabled.checked = settings.hotkeysEnabled;
   zoomBelow100.checked = settings.zoomBelow100;
   fixedPolicy.value = settings.fixedElementPolicy;
   themeSelect.value = settings.theme;
@@ -293,6 +297,14 @@ for (const slot of HOTKEY_SLOTS) {
 
 memoryDefault.addEventListener('change', () => {
   saveSettings({ memoryDefault: memoryDefault.checked }).then(showSaved);
+});
+
+gestureEnabled.addEventListener('change', () => {
+  saveSettings({ gestureEnabled: gestureEnabled.checked }).then(showSaved);
+});
+
+hotkeysEnabled.addEventListener('change', () => {
+  saveSettings({ hotkeysEnabled: hotkeysEnabled.checked }).then(showSaved);
 });
 
 zoomBelow100.addEventListener('change', () => {

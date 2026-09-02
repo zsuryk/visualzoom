@@ -75,6 +75,8 @@ let scale = 1;
 let crispText = false;
 let zoomModifier = DEFAULT_MODIFIER;
 let inputHotkeys = DEFAULT_HOTKEYS;
+let gestureEnabled = true;
+let hotkeysEnabled = true;
 // Whether zooming below 100% is allowed (the letterbox zoom-out). Off by
 // default: the scale clamps at 1x unless the user opts in, mirroring how a
 // trackpad pinch starts from the page at 100%.
@@ -239,7 +241,7 @@ function notchFromWheel(event) {
 }
 
 function onWheel(event) {
-  if (!hasZoomModifier(event) || !isEngaged()) {
+  if (!gestureEnabled || !hasZoomModifier(event) || !isEngaged()) {
     return;
   }
     // Lazy-wrap on first gesture from dormant mode.
@@ -272,7 +274,7 @@ function isEditable(el) {
 }
 
 function onKeyDown(event) {
-  if (!isEngaged()) {
+  if (!hotkeysEnabled || !isEngaged()) {
     return;
   }
   if (isEditable(event.target)) {
@@ -606,6 +608,8 @@ export function createVisualZoom({
   onTelemetry = null,
   modifier = DEFAULT_MODIFIER,
   hotkeys = DEFAULT_HOTKEYS,
+  gestureEnabled: initialGestureEnabled = true,
+  hotkeysEnabled: initialHotkeysEnabled = true,
   policy = 'scale-everything',
   zoomBelow100: allowZoomBelow100 = false,
 } = {}) {
@@ -613,6 +617,8 @@ export function createVisualZoom({
   telemetrySink = onTelemetry;
   zoomModifier = modifier;
   inputHotkeys = hotkeys;
+  gestureEnabled = initialGestureEnabled;
+  hotkeysEnabled = initialHotkeysEnabled;
   if (POLICIES.includes(policy)) {
     fixedPolicy.setPolicy(policy);
   }
@@ -662,12 +668,18 @@ export function createVisualZoom({
 
   // Settings changes land here live: a new gesture modifier or hotkey combo
   // applies to already-open tabs without a reload of the extension.
-  function setInputs({ modifier: nextModifier, hotkeys: nextHotkeys } = {}) {
+  function setInputs({ modifier: nextModifier, hotkeys: nextHotkeys, gestureEnabled: nextGesture, hotkeysEnabled: nextHotkeysEnabled } = {}) {
     if (nextModifier) {
       zoomModifier = nextModifier;
     }
     if (nextHotkeys) {
       inputHotkeys = nextHotkeys;
+    }
+    if (typeof nextGesture === 'boolean') {
+      gestureEnabled = nextGesture;
+    }
+    if (typeof nextHotkeysEnabled === 'boolean') {
+      hotkeysEnabled = nextHotkeysEnabled;
     }
   }
 

@@ -35,6 +35,11 @@ export const DEFAULT_SETTINGS = {
   // events, so the extension can intercept and preventDefault() them.
   zoomModifier: 'shiftKey',
   hotkeys: DEFAULT_HOTKEYS,
+  // Enable/disable gesture zoom (modifier + scroll) and hotkey zoom
+  // independently. Both are on by default so users who only use one input
+  // method can disable the other to avoid accidental triggers.
+  gestureEnabled: true,
+  hotkeysEnabled: true,
   // Per-site zoom memory default: off. Zoom is only ever restored on revisit
   // after an explicit per-site opt-in.
   memoryDefault: false,
@@ -142,6 +147,8 @@ export function sanitizeSettings(input) {
       zoomOut: sanitizeHotkey(raw.hotkeys && raw.hotkeys.zoomOut, DEFAULT_HOTKEYS.zoomOut),
       reset: sanitizeHotkey(raw.hotkeys && raw.hotkeys.reset, DEFAULT_HOTKEYS.reset),
     },
+    gestureEnabled: raw.gestureEnabled !== false,
+    hotkeysEnabled: raw.hotkeysEnabled !== false,
     memoryDefault: raw.memoryDefault === true,
     zoomBelow100: raw.zoomBelow100 === true,
     fixedElementPolicy: POLICIES.includes(raw.fixedElementPolicy)
