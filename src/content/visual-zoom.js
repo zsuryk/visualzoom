@@ -263,8 +263,19 @@ function onWheel(event) {
   }
 }
 
+function isEditable(el) {
+  return (
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.isContentEditable
+  );
+}
+
 function onKeyDown(event) {
   if (!isEngaged()) {
+    return;
+  }
+  if (isEditable(event.target)) {
     return;
   }
   let nextScale;
